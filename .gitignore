@@ -1,0 +1,11 @@
+build/
+build-*/
+out/
+.vs/
+*.user
+*.suo
+installer/payload/
+installer/*.exe
+*.obj
+*.pdb
+*.ilk

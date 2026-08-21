@@ -1,0 +1,68 @@
+{
+  // Windows account whose logon should turn all Razer lighting off.
+  "TargetUsername": "NonsoleMode",
+
+  // Seconds between heartbeat + re-apply ticks while blackout is held.
+  // Must stay below the Chroma SDK's ~15 s session timeout.
+  "TickSeconds": 5,
+
+  // Seconds to wait before retrying when the Chroma REST API is unreachable
+  // (Razer Synapse / Chroma SDK service not running).
+  "RetryInitSeconds": 30,
+
+  // If true, a Disconnected (but still logged-on) session of the target user
+  // keeps the blackout held. Active/Connected sessions always count.
+  "IncludeDisconnectedSessions": true,
+
+  // Chroma SDK REST initialization endpoint (default port 54235).
+  "ChromaInitUrl": "http://localhost:54235/razer/chromasdk",
+
+  // Which lighting ecosystems join the guest blackout (also in the UI).
+  "RazerEnabled": true,
+  "SteelSeries": { "Enabled": false },
+  "Logitech": { "Enabled": false },
+  "Corsair": { "Enabled": false },
+  "OpenRgb": {
+    "Enabled": false,
+    "Host": "127.0.0.1",
+    "Port": 6742,
+    // an all-black profile you create once in OpenRGB
+    "BlackoutProfile": "Blackout"
+  },
+  // Windows Dynamic Lighting. ExcludeVendorOwnedDevices (default true) makes
+  // WDL skip devices an enabled vendor engine already owns (e.g. Razer), so the
+  // two don't fight over the same hardware — WDL covers only what's left.
+  "DynamicLighting": { "Enabled": false, "ExcludeVendorOwnedDevices": true },
+
+  // Discord Rich Presence while the guest session is active. Create a (free)
+  // application at discord.com/developers/applications, paste its Application
+  // ID here, and upload discord-assets\playcast_squid.png as a Rich Presence
+  // art asset with the key "playcast_squid". Empty ApplicationId = off.
+  "Discord": {
+    "Enabled": true,
+    "ApplicationId": "",
+    "Details": "In Nonsole Mode: Accruing Rewards by Hosting",
+    "State": "",
+    "LargeImageKey": "playcast_squid",
+    "LargeImageText": "Playcast",
+
+    // Game pass-through: a shim in the guest session captures the Discord
+    // Application ID of games the guest launches; the resolved name fills the
+    // template below. Off by default and inherently partial (games whose
+    // Discord client gives up on a denied discord-ipc-0 are never seen).
+    "GamePassthroughEnabled": false,
+    "HostingTemplate": "Hosting {game} in Nonsole Mode"
+  },
+
+  // Optional secondary signal, ORed with session detection. Off by default;
+  // the session (WTS username == NonsoleMode) signal alone is authoritative.
+  // Default watches VirtualDisplayDeviceName under GuestMode — a REG_SZ Playcast
+  // writes only while the guest virtual display is up.
+  "RegistryWatch": {
+    "Enabled": false,
+    "Hive": "HKLM",
+    "SubKey": "SOFTWARE\\Playcast\\GuestMode",
+    "ValueName": "VirtualDisplayDeviceName",
+    "ActiveValue": null
+  }
+}

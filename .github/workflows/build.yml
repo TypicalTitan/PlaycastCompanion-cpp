@@ -1,0 +1,32 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlaycastCompanion-win-x64
+          path: build/PlaycastCompanion.exe
+
+      # The NSIS setup is built locally (installer\build-setup.cmd); add
+      # `choco install nsis` + makensis here if you want CI to produce it too.
