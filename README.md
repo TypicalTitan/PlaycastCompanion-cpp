@@ -1,31 +1,72 @@
 # Playcast Companion (native)
 
+[![build](https://github.com/TypicalTitan/PlaycastCompanion-cpp/actions/workflows/build.yml/badge.svg)](https://github.com/TypicalTitan/PlaycastCompanion-cpp/actions/workflows/build.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![platform: Windows 10 / 11](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D6)
+![language: C++20](https://img.shields.io/badge/C%2B%2B-20-00599C)
+![no dependencies](https://img.shields.io/badge/dependencies-none-success)
+![binary: ~0.9 MB](https://img.shields.io/badge/binary-~0.9%20MB-brightgreen)
+
 > **Unofficial.** A personal, open-source Windows utility for people who host
 > cloud-gaming sessions with Playcast. It is not affiliated with, endorsed by, or
 > supported by Playcast or any hardware vendor named below.
 
-This is the native C++ build of [Playcast Companion](https://github.com/TypicalTitan/PlaycastCompanion)
-(the C# / .NET sibling project). Same behaviour, same `config.json`, same
-installer — in a single ~1 MB exe with no runtime.
+When a **guest account** signs in to your PC — the way a cloud-gaming host hands
+the machine to a remote player — Playcast Companion makes it look neutral: **every
+RGB lighting ecosystem you enable goes dark**, and (optionally) **your Discord
+profile shows that you're hosting**. The instant the guest session ends, everything
+hands back — your Synapse / iCUE / GG profiles return and the Discord status clears.
+You never touch it after install; it watches Windows and reacts.
 
-While a guest account is signed in to your PC, Playcast Companion makes the
-machine look neutral: **every RGB lighting ecosystem you enable goes dark**, and
-(optionally) **your Discord profile shows that you're hosting**. The moment the
-guest session ends, everything hands back — Synapse/iCUE/GG profiles return and
-the Discord status clears.
+<p align="center">
+  <img src="docs/screenshots/status.png" width="420" alt="Status tab — at-a-glance state">
+  &nbsp;
+  <img src="docs/screenshots/lighting.png" width="420" alt="Lighting tab — one card per RGB ecosystem">
+</p>
 
 - Detects the guest session from Windows itself (WTS session notifications) —
-  it never touches or modifies Playcast.
+  it never reads, hooks, or modifies Playcast.
 - Lighting: **Razer Chroma**, **SteelSeries GameSense**, **Logitech G**,
   **Corsair iCUE**, **OpenRGB** (motherboards, RAM, GPUs…), and **Windows
   Dynamic Lighting**, each individually selectable and safe to run together.
-- Discord Rich Presence with an optional "Hosting *{game}* in Nonsole Mode" line.
+- Discord Rich Presence, with an optional "Hosting *{game}* in Nonsole Mode" line
+  (*Nonsole Mode* = your guest account, named `NonsoleMode` by default).
 - Runs unelevated, starts with Windows for every account, headless in the guest
   session, dark-themed settings window in yours.
 
+## At a glance
+
+| Aspect | Detail |
+|---|---|
+| **Binary** | one statically-linked `PlaycastCompanion.exe`, ~0.9 MB, no runtime to install |
+| **Source** | ~9,000 lines of C++20 across 21 self-contained modules |
+| **Dependencies** | none beyond the Windows SDK (Win32, WinHTTP, Winsock, GDI+, C++/WinRT) |
+| **Lighting ecosystems** | 6, each an isolated backend behind one interface |
+| **Elevation** | never — runs `asInvoker`; only install / uninstall / config-save prompt for UAC |
+| **Hardening** | `/W4 /WX /permissive- /sdl`, Control Flow Guard, CET shadow stacks, high-entropy ASLR, DEP, static CRT |
+| **Build** | MSVC + CMake/Ninja; `build.cmd` from a fresh clone; CI-verified on `windows-latest` |
+
+## Screenshots
+
+| Status | Lighting |
+|---|---|
+| ![Status tab](docs/screenshots/status.png) | ![Lighting tab](docs/screenshots/lighting.png) |
+| Live state at a glance: is a guest signed in, are the lights held, is Discord live, does it start with Windows. **Preview guest mode (10 s)** runs the whole effect on demand. | One brand-styled card per ecosystem, each with an enable toggle and its own status. Enable several — they never fight over the same hardware. |
+
+| Discord | Advanced |
+|---|---|
+| ![Discord tab](docs/screenshots/discord.png) | ![Advanced tab](docs/screenshots/advanced.png) |
+| A live preview of the presence, editable status lines, the hosting template, and the optional game pass-through toggle. | Guest account name, disconnected-session behaviour, the optional registry signal, and quick links to the log and install folder. |
+
+The Lighting tab scrolls; the
+[remaining cards](docs/screenshots/lighting-2.png) are OpenRGB and Windows
+Dynamic Lighting. The window is drawn entirely in Win32 + GDI+ — the dark theme,
+the owner-drawn tab strip, the gold accents and the app mark are all rendered by
+the app (these shots are produced by its own `--snapshot` harness).
+
 ## Why native
 
-- **No .NET runtime.** One statically linked Win32 exe (~1 MB) instead of a
+- **No .NET runtime.** One statically linked Win32 exe (~0.9 MB) instead of a
   ~50 MB self-contained publish. Nothing to install or keep patched besides
   Windows itself.
 - **Instant start.** No JIT, no runtime extraction — the tray icon is up the
@@ -33,8 +74,13 @@ the Discord status clears.
 - **Drop-in upgrade.** It reads the same `config.json`, uses the same install
   folder, Run key, and Apps entry, and ships in the same NSIS setup, so it
   installs *over* the .NET version in place and keeps your settings.
-- **Same hardening.** Warnings-as-errors, `/sdl`, CFG, CET, ASLR/DEP, every
-  byte from a pipe or socket validated and length-capped.
+- **Same hardening, closer to the metal.** Warnings-as-errors, `/sdl`, CFG, CET,
+  ASLR/DEP; every byte from a pipe or socket validated and length-capped.
+
+> There's a sibling C# / .NET project —
+> [PlaycastCompanion](https://github.com/TypicalTitan/PlaycastCompanion) — with
+> identical behaviour and the same `config.json`. This native build is a
+> from-scratch port; pick whichever fits your stack.
 
 ## Requirements
 
@@ -69,8 +115,8 @@ the Discord status clears.
    cd PlaycastCompanion-cpp
    build.cmd
    ```
-   Produces `build\PlaycastCompanion.exe` — a single ~1 MB static exe; no
-   runtime needed on the target. `build.cmd debug` makes a Debug build, and
+   Produces `build\PlaycastCompanion.exe` — a single static exe; no runtime
+   needed on the target. `build.cmd debug` makes a Debug build, and
    `build.cmd check <File.cpp>` compiles one source file warning-free without
    linking (the `/W4 /WX` gate used during development).
 
@@ -84,9 +130,9 @@ the Discord status clears.
    `installer\payload`, compiles the NSIS script, and fails loudly if anything
    is missing.
 
-CI does steps 1–2 on every push (`.github/workflows/build.yml`) and uploads
-`PlaycastCompanion.exe` as an artifact, so a green check means the repo builds
-from scratch.
+CI does steps 1–2 on every push ([`.github/workflows/build.yml`](.github/workflows/build.yml))
+and uploads `PlaycastCompanion.exe` as an artifact, so a green check means the
+repo builds from scratch.
 
 ## Install
 
@@ -131,6 +177,53 @@ Two instances coexist by design (one per Windows session, `Local\` mutex): the
 one in the guest session runs **headless** — no tray icon, no window, nothing
 for a guest to click — and holds the blackout independently of the one in your
 session.
+
+## Architecture
+
+Everything non-trivial sits behind one small interface, so backends are
+independent and easy to reason about (or lift into another product — see
+[`INTEGRATION.md`](INTEGRATION.md)):
+
+```cpp
+class ILightingBackend {
+    virtual std::wstring DisplayName() const = 0;
+    virtual bool         Enabled()     const = 0;   // reads live config
+    virtual bool         IsHolding()   const = 0;
+    virtual std::wstring StatusText()  const = 0;
+    virtual void         StartBlackout()     = 0;   // no-op if already running or !Enabled()
+    virtual void         StopBlackout()      = 0;   // stops, joins, releases; returns within ~5 s
+};
+```
+
+`LightingBackendBase` supplies the shared hold/release loop — a `std::jthread`
+that re-asserts the blackout every tick and retries after a failure — so each of
+the six backends is just a thin protocol adapter over its vendor's API. Adding a
+seventh ecosystem is one class.
+
+- **Threading** is `std::jthread` + `std::stop_token` throughout; a start/stop
+  lifecycle mutex serialises the worker so `StopBlackout()` always joins and
+  restores cleanly, and blocking I/O is cancellable so shutdown finishes in a
+  few seconds. Any thread that calls WinRT initialises an MTA first.
+- **No exceptions escape** a worker thread or a window procedure — they're
+  caught, logged, and retried.
+- **Everything from outside is untrusted:** config, HTTP bodies, pipe and socket
+  frames are length-capped (≤ 1 MB), names are bounded, control characters are
+  stripped, and the Chroma REST URL is forced to loopback.
+
+**Source layout** (`src/`, ~9,000 lines, no external dependencies):
+
+```
+Log · Json · Config · Http          core: logging, JSON (Windows.Data.Json), config, WinHTTP
+LightingBackend · NativeResolver    the ILightingBackend base loop + lazy vendor-DLL loader
+Chroma · SteelSeries · OpenRgb      REST / TCP backends (WinHTTP, Winsock)
+Logitech · Corsair                  vendor-DLL backends (runtime-loaded, never bundled)
+DynamicLighting                     Windows Dynamic Lighting via WinRT LampArray
+SessionWatcher · RegistryWatcher    the guest-mode signals
+DiscordPresence · GameNameCache     Rich Presence over the local IPC pipe + id→name resolver
+DiscordShim                         optional guest→owner game pass-through (shim + ACL'd relay)
+TrayApp · main                      orchestration, tray icon, single-instance, CLI flags
+MainWindow · Branding               the Win32 + GDI+ settings window and drawn marks
+```
 
 ## Lighting engines
 
@@ -212,10 +305,27 @@ compatible with the C# build's — key names and semantics are identical.
 - Hardened binary: `/W4 /WX /sdl /GS`, Control Flow Guard, CET shadow stacks,
   ASLR (high-entropy), DEP; static CRT so no DLL beside the exe can be swapped.
 
+## Project layout
+
+```
+PlaycastCompanion-cpp/
+├─ src/                     21 .cpp + 21 .h — the app (see Architecture)
+├─ installer/               NSIS setup: installer.nsi + build-setup.cmd
+├─ docs/screenshots/        the images above
+├─ .github/workflows/       CI: build.yml (MSVC + Ninja on windows-latest)
+├─ CMakeLists.txt           hardened build config (flags, libs, manifest, rc)
+├─ build.cmd                one-command build / check / debug wrapper
+├─ config.json              default configuration (shipped in the installer)
+├─ README.md · LICENSE · THIRD_PARTY_NOTICES.md · INTEGRATION.md · PORTING.md
+```
+
 ## Dev harness flags
 
-- `--snapshot <dir>` renders every settings tab to PNG (review UI without a desktop).
-- `--lamps [file]` lists every LampArray device the OS exposes and whether the app can drive it.
+- `--snapshot <dir>` renders every settings tab to PNG (review UI without a
+  desktop; these README shots come from it). Side-effect free — it never starts
+  a blackout or touches Discord.
+- `--lamps [file]` lists every LampArray device the OS exposes and whether the
+  app can drive it.
 - `--autostart` quiet start (used by the Run key); a second manual launch just
   raises the running instance's window.
 
@@ -223,11 +333,12 @@ compatible with the C# build's — key names and semantics are identical.
 
 This repository contains **no** vendor logos, fonts, or Playcast artwork — the
 cards use original drawn marks and plain brand names/colours. Product names are
-used only to identify interoperability; see `THIRD_PARTY_NOTICES.md`. The app
-links only Windows SDK components; no third-party libraries.
+used only to identify interoperability; see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The app links only Windows
+SDK components; no third-party libraries.
 
-Integrating this into a product? See `INTEGRATION.md`.
+Integrating this into a product? See [`INTEGRATION.md`](INTEGRATION.md).
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).
