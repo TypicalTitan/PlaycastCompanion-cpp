@@ -14,7 +14,8 @@ namespace {
 constexpr const char* kGame = "PLAYCAST_COMPANION";
 constexpr std::array<const char*, 5> kDeviceTypes = {"keyboard", "mouse", "headset", "mousepad", "indicator"};
 
-constexpr unsigned kTimeoutMs = 5000;         // HttpClient.Timeout in the C# version
+constexpr unsigned kTimeoutMs = 5000;         // registration (HttpClient.Timeout in the C# version)
+constexpr unsigned kEventTimeoutMs = 3000;    // per-tick event/heartbeat posts: bounds a stop mid-request
 constexpr unsigned kReleaseTimeoutMs = 3000;  // remove_game gets its own 3 s budget
 
 // FOLDERID_ProgramData = {62AB5D82-FDC1-4DC3-A9DD-070D1D495D97}, spelled out so
@@ -86,11 +87,11 @@ void SteelSeriesController::ApplyTick(std::stop_token stop) {
 
     for (const std::string& evt : events_) {
         PostJson(baseUrl_, L"/game_event",
-                 std::format(R"({{"game":"{}","event":"{}","data":{{"value":1}}}})", kGame, evt), kTimeoutMs);
+                 std::format(R"({{"game":"{}","event":"{}","data":{{"value":1}}}})", kGame, evt), kEventTimeoutMs);
         if (stop.stop_requested())
             return;
     }
-    PostJson(baseUrl_, L"/game_heartbeat", std::format(R"({{"game":"{}"}})", kGame), kTimeoutMs);
+    PostJson(baseUrl_, L"/game_heartbeat", std::format(R"({{"game":"{}"}})", kGame), kEventTimeoutMs);
 }
 
 void SteelSeriesController::RegisterGame(std::stop_token stop) {

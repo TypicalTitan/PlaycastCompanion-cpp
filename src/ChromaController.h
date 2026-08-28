@@ -25,5 +25,6 @@ private:  // module owner may extend
     const AppConfig& cfg_;
     std::wstring sessionUri_;
     void InitSession();
+    int ApplyEffects(std::stop_token stop);  // returns how many device PUTs succeeded
 };
 }  // namespace pc

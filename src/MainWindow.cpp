@@ -29,7 +29,7 @@
 // the window's DPI (Per-Monitor V2, re-laid out on WM_DPICHANGED).
 
 #ifndef PC_VERSION_STRING
-#define PC_VERSION_STRING "3.0.0"
+#define PC_VERSION_STRING "3.1.0"
 #endif
 #define PC_WIDEN2(x) L##x
 #define PC_WIDEN(x) PC_WIDEN2(x)

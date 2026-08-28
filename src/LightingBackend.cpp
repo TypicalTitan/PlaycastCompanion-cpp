@@ -79,6 +79,7 @@ void LightingBackendBase::StartBlackout() {
     std::lock_guard lock(mutex_);
     if (running_) return;
     loggedUnavailable_ = false;
+    failureStreak_ = 0;
     running_ = true;
     thread_ = std::jthread([this](std::stop_token stop) { Run(stop); });
 }
@@ -116,28 +117,46 @@ bool LightingBackendBase::SleepFor(std::stop_token stop, std::chrono::millisecon
 
 void LightingBackendBase::Run(std::stop_token stop) {
     ApartmentScope apartment;
+    const auto started = std::chrono::steady_clock::now();
+    bool engaged = false;
 
     // Mirrors the C# RunAsync: a failed tick is logged once, the backend is told
-    // the connection is gone, and we wait RetryDelay before trying again. Only a
-    // stop request ends the loop.
+    // the connection is gone, and we retry — quickly at first (2/4/8/16 s, for
+    // an engine that just wasn't up yet when the guest session appeared), then
+    // settling at RetryDelay. Only a stop request ends the loop.
     auto onFailure = [this, &stop](const std::exception& ex) -> bool {
         // An exception raised while a stop is pending is the cancellation
         // unwinding (the OperationCanceledException filter in C#): exit quietly.
         if (stop.stop_requested()) return false;
         SetStatus(UnavailableText(ex));
+        // 2/4/8/16 s for the first failures, then exactly RetryDelay() — never
+        // min()'d against the ramp, or a configured delay above 32 s would be
+        // silently ignored forever.
+        if (failureStreak_ < 5) ++failureStreak_;
+        const auto delay = failureStreak_ >= 5
+                               ? RetryDelay()
+                               : std::min(std::chrono::seconds(1LL << failureStreak_), RetryDelay());
         if (!loggedUnavailable_) {
             loggedUnavailable_ = true;
-            LogInfo(std::format(L"{} unavailable ({}); retrying every {}s", DisplayName(), WhatToWide(ex),
+            LogInfo(std::format(L"{} unavailable ({}); retrying in {}s (backing off to {}s)", DisplayName(),
+                                WhatToWide(ex), static_cast<long long>(delay.count()),
                                 static_cast<long long>(RetryDelay().count())));
         }
         OnConnectionLost();
-        return SleepFor(stop, RetryDelay());
+        return SleepFor(stop, delay);
     };
 
     while (!stop.stop_requested()) {
         try {
             ApplyTick(stop);
             if (stop.stop_requested()) return;
+            if (!engaged) {
+                engaged = true;
+                const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - started).count();
+                LogInfo(std::format(L"{}: blackout engaged in {} ms", DisplayName(), ms));
+            }
+            failureStreak_ = 0;
             if (loggedUnavailable_) {
                 loggedUnavailable_ = false;
                 LogInfo(std::format(L"{}: blackout applied (recovered)", DisplayName()));

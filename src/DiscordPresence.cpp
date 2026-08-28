@@ -20,7 +20,7 @@ constexpr DWORD kReadTimeoutMs = 3000;            // whole reply frame (header +
 constexpr DWORD kWriteTimeoutMs = 3000;
 constexpr DWORD kClearTimeoutMs = 2000;           // activity:null on Clear()
 constexpr DWORD kHeartbeatMs = 30000;             // re-send cadence while live
-constexpr DWORD kRetryMs = 30000;                 // back-off after a failure
+constexpr DWORD kRetryMs = 30000;                 // steady-state back-off after repeated failures
 constexpr DWORD kPipeBusyWaitMs = 250;
 constexpr const char* kErrorMarker = "\"evt\":\"ERROR\"";
 
@@ -268,11 +268,13 @@ struct DiscordPresence::Impl {
 
 void DiscordPresence::Impl::Run(const std::stop_token& st) {
     const HANDLE stop = stopEvent.get();
+    int failureStreak = 0;  // worker-local: first retries come fast, then settle at kRetryMs
     while (!st.stop_requested()) {
         std::string failure;
         try {
             if (!pipe.valid()) ConnectAndHandshake(st);
             SendActivity(stop);
+            failureStreak = 0;
             if (loggedUnavailable) LogInfo(L"Discord presence restored");
             loggedUnavailable = false;
             SetStatus(L"Live on your profile");
@@ -290,12 +292,17 @@ void DiscordPresence::Impl::Run(const std::stop_token& st) {
         }
         if (st.stop_requested()) return;
         SetStatus(L"Discord not reachable — retrying");
+        // 2 s, 4 s, 8 s, 16 s, then kRetryMs: a Discord client that was still
+        // starting up when the guest arrived gets the presence within seconds.
+        if (failureStreak < 5) ++failureStreak;
+        const DWORD delay = failureStreak >= 5 ? kRetryMs : std::min<DWORD>(kRetryMs, 1000u << failureStreak);
         if (!loggedUnavailable) {
             loggedUnavailable = true;
-            LogInfo(std::format("Discord presence unavailable ({}); retrying every 30s", failure));
+            LogInfo(std::format("Discord presence unavailable ({}); retrying in {}s (backing off to {}s)",
+                                failure, delay / 1000, kRetryMs / 1000));
         }
         ClosePipe();
-        if (WaitForSingleObject(stop, kRetryMs) == WAIT_OBJECT_0) return;
+        if (WaitForSingleObject(stop, delay) == WAIT_OBJECT_0) return;
     }
 }
 

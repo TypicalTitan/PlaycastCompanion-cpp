@@ -43,7 +43,10 @@ std::atomic<bool> g_harnessMode{false};
 constexpr UINT kTrayIconId = 1;
 constexpr UINT_PTR kPollTimerId = 1;
 constexpr UINT_PTR kPreviewTimerId = 2;
-constexpr UINT kPollIntervalMs = 30'000;
+// Safety net only (WTS + registry notifications carry the real events), but it
+// is also the worst-case entry/exit latency when a notification is missed —
+// keep it tight; the check is a microsecond-scale WTS enumeration.
+constexpr UINT kPollIntervalMs = 10'000;
 constexpr UINT kPreviewMs = 10'000;
 
 constexpr UINT kMenuOpen = 1001;
@@ -251,6 +254,9 @@ struct TrayApp::Impl {
     std::condition_variable_any queueCv;
     std::deque<std::wstring> queue;
     std::atomic<bool> guestActive{false};
+    // While the 10 s tray-menu preview runs, periodic polls and session events
+    // must not tear the preview's blackout down — only "preview end" may.
+    std::atomic<bool> previewArmed{false};
     std::atomic<bool> exiting{false};
     bool shutDown = false;  // UI thread only
 
@@ -700,6 +706,7 @@ bool TrayApp::Impl::ApplySettings(std::stop_token stop) {
 /// start a worker between a settings quiesce and the config swap.
 void TrayApp::Impl::RunPreview() {
     LogInfo(L"guest-mode preview started");
+    previewArmed.store(true);
     if (!g_harnessMode.load()) {
         for (const auto& backend : lighting) {
             try {
@@ -724,10 +731,17 @@ void TrayApp::Impl::Evaluate(const std::wstring& reason, std::stop_token stop) {
         }
         if (reason == L"settings" && !ApplySettings(stop))
             return;  // shutting down
+        if (reason == L"preview end")
+            previewArmed.store(false);
         const bool harness = g_harnessMode.load();
+        const bool preview = previewArmed.load();
         const bool active = (sessions && sessions->IsTargetUserLoggedOn()) || (registry && registry->IsActive());
         if (harness) {
             // --snapshot: only the state the UI renders, never the side effects.
+        } else if (preview && !active) {
+            // Mid-preview poll/session event with no real guest: leave the
+            // preview's blackout and presence alone until "preview end".
+            return;
         } else if (active) {
             if (!guestActive.load())
                 LogInfo(std::format(L"guest session active ({}) -> stealth on", reason));

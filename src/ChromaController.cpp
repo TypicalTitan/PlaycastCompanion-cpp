@@ -23,7 +23,11 @@ constexpr const char* kInitJson =
     R"("category":"application"})";
 
 // Init can legitimately take several seconds while the SDK enumerates devices.
-constexpr unsigned kTimeoutMs = 10000;
+// Everything after init is a millisecond-scale loopback call, so it gets a much
+// tighter budget: a wedged Synapse then holds a StopBlackout join for ~3 s
+// instead of ~10 s per HTTP phase.
+constexpr unsigned kInitTimeoutMs = 10000;
+constexpr unsigned kEffectTimeoutMs = 3000;
 
 void EnsureSuccess(const http::Response& resp, const char* method, const std::wstring& url) {
     if (http::IsSuccess(resp))
@@ -33,7 +37,7 @@ void EnsureSuccess(const http::Response& resp, const char* method, const std::ws
 }
 
 void Put(const std::wstring& url, const std::string& body) {
-    EnsureSuccess(http::Request("PUT", url, body, L"application/json", kTimeoutMs), "PUT", url);
+    EnsureSuccess(http::Request("PUT", url, body, L"application/json", kEffectTimeoutMs), "PUT", url);
 }
 }  // namespace
 
@@ -56,29 +60,49 @@ std::wstring ChromaController::UnavailableText(const std::exception&) const {
 void ChromaController::OnConnectionLost() { sessionUri_.clear(); }
 
 void ChromaController::ApplyTick(std::stop_token stop) {
+    int applied = 0;
     if (sessionUri_.empty()) {
         InitSession();
-        // let the SDK finish registering the app
+        if (stop.stop_requested())
+            return;
+        // First black frame right away — a responsive SDK honours it at once,
+        // so the room goes dark without waiting out the settle sleep below.
+        applied += ApplyEffects(stop);
+        if (stop.stop_requested())
+            return;
+        // Let the SDK finish registering the app, then re-assert: frames sent
+        // before registration completes are sometimes silently dropped.
         if (!SleepFor(stop, std::chrono::milliseconds(750)))
             return;
     } else {
         Put(sessionUri_ + L"/heartbeat", "");
     }
+    applied += ApplyEffects(stop);
+    // A tick where every device PUT failed is not a hold — treat it as an
+    // outage so the base loop's "engaged" log and retry backoff stay truthful.
+    if (applied == 0 && !stop.stop_requested())
+        throw std::runtime_error("Chroma accepted the session but no device took the effect");
+}
+
+int ChromaController::ApplyEffects(std::stop_token stop) {
+    int applied = 0;
     for (const wchar_t* device : kDevices) {
         try {
             Put(sessionUri_ + L"/" + device, kBlackEffectJson);
+            ++applied;
         } catch (const std::exception&) {
             // device types the user doesn't own can fail (and a per-device
             // timeout is retried next tick anyway); that's fine
         }
         if (stop.stop_requested())
-            return;
+            break;
     }
+    return applied;
 }
 
 void ChromaController::InitSession() {
     const http::Response resp =
-        http::Request("POST", cfg_.ChromaInitUrl, kInitJson, L"application/json", kTimeoutMs);
+        http::Request("POST", cfg_.ChromaInitUrl, kInitJson, L"application/json", kInitTimeoutMs);
     EnsureSuccess(resp, "POST", cfg_.ChromaInitUrl);
     const json::JsonObject doc = json::Parse(resp.body);
     std::wstring uri = json::GetString(doc, L"uri");
@@ -94,7 +118,7 @@ void ChromaController::Release() {
     if (uri.empty())
         return;
     try {
-        const http::Response resp = http::Request("DELETE", uri, {}, L"application/json", kTimeoutMs);
+        const http::Response resp = http::Request("DELETE", uri, {}, L"application/json", kEffectTimeoutMs);
         LogInfo(std::format(L"Chroma session released (HTTP {}); Synapse lighting restored", resp.status));
     } catch (const std::exception& ex) {
         LogInfo(L"Chroma release failed (" + json::Utf8ToWide(ex.what()) +

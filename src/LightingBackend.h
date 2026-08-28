@@ -35,6 +35,10 @@ public:
 
 protected:
     virtual std::chrono::seconds Tick() const { return std::chrono::seconds(5); }
+    /// Steady-state retry cadence. The first failures after StartBlackout (or
+    /// after a recovery) retry faster — 2 s, 4 s, 8 s, 16 s — and only then
+    /// settle at this value, so an engine that wasn't ready the instant the
+    /// guest session appeared goes dark seconds later, not half a minute.
     virtual std::chrono::seconds RetryDelay() const { return std::chrono::seconds(30); }
     /// Status shown after a successful tick (override to report nuance).
     virtual std::wstring HoldingStatus() const { return L"Holding blackout"; }
@@ -63,6 +67,7 @@ private:
     std::jthread thread_;
     bool running_ = false;
     bool loggedUnavailable_ = false;
+    int failureStreak_ = 0;  // worker thread only (reset before the worker spawns)
     std::mutex sleepMutex_;
     std::condition_variable_any sleepCv_;
 };
