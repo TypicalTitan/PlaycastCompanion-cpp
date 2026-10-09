@@ -39,6 +39,7 @@ HWND MainWindow::Impl::Add(int id, int page, const wchar_t* kind, const std::wst
     SendMessageW(window, WM_SETFONT, reinterpret_cast<WPARAM>(baseFont.Get()), FALSE);
     SetWindowTheme(window, L"DarkMode_Explorer", nullptr);
     if (wcscmp(kind, L"COMBOBOX") == 0) SetWindowSubclass(window, ComboProc, 1, 0);
+    SetWindowSubclass(window, ScrollControlProc, 2, reinterpret_cast<DWORD_PTR>(this));
     return window;
 }
 HWND MainWindow::Impl::Label(int page, const std::wstring& text, int x, int y, int width, int height) {

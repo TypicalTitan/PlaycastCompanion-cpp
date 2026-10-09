@@ -58,6 +58,8 @@ struct MainWindow::Impl {
     std::array<PageContext, ui::PageCount> contexts{};
     std::map<int, Control> controls;
     std::array<int, ui::PageCount> offsets{}, contentHeights{};
+    std::array<int, ui::PageCount> wheelRemainders{};
+    HWND nativeWheelRecipient = nullptr;
     std::array<HWND, 6> lightingStatus{};
     HWND overviewStatus = nullptr, overviewLighting = nullptr, overviewDiscord = nullptr, overviewStartup = nullptr;
     HWND loggingStatus = nullptr, loggingPath = nullptr, discordPreview = nullptr, discordStatus = nullptr;
@@ -96,6 +98,8 @@ struct MainWindow::Impl {
     void LayoutAnalysis();
     void SelectPage(int page);
     void ScrollPage(int page, int code, int position = 0);
+    bool RouteWheel(HWND receiver, WPARAM word, LPARAM screenCoordinates);
+    void ScrollWheelPage(int page, int delta);
     void LoadSettings(bool fromRuntime = true);
     void ReadSettings();
     void SetDirty(bool value);
@@ -116,6 +120,7 @@ struct MainWindow::Impl {
     bool CapturePng(const std::wstring& path);
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM word, LPARAM parameter);
     static LRESULT CALLBACK PageProc(HWND window, UINT message, WPARAM word, LPARAM parameter);
+    static LRESULT CALLBACK ScrollControlProc(HWND window, UINT message, WPARAM word, LPARAM parameter, UINT_PTR id, DWORD_PTR owner);
     LRESULT Message(HWND window, UINT message, WPARAM word, LPARAM parameter, int page);
 };
 } // namespace pc

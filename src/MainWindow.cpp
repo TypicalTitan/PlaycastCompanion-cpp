@@ -85,6 +85,8 @@ void MainWindow::Impl::Layout() {
     for (const auto& [id, control] : controls) {
         if (id >= ui::NavBase && id < ui::NavBase + static_cast<int>(ui::PageCount)) continue;
         if (control.Page < 0) continue;
+        if (id == ui::AnalysisView || id == ui::AnalysisList || id == ui::AnalysisDetails || id == ui::AnalysisFilter
+            || id == ui::NextPage || id == ui::PreviousPage || control.Window == importSummary) continue;
         if (control.Page == ui::Lighting && control.Y >= 500) ShowWindow(control.Window, advanced ? SW_SHOW : SW_HIDE);
         RECT page{}; GetClientRect(pages[control.Page], &page);
         const int pageWidth = MulDiv(page.right, 96, static_cast<int>(dpi));
@@ -113,7 +115,7 @@ void MainWindow::Impl::ScrollPage(int page, int code, int position) {
     if (code == SB_LINEDOWN) next += 30;
     if (code == SB_PAGEUP) next -= height;
     if (code == SB_PAGEDOWN) next += height;
-    if (code == SB_THUMBTRACK) next = position;
+    if (code == SB_THUMBTRACK || code == SB_THUMBPOSITION) next = position;
     if (code == SB_TOP) next = 0;
     if (code == SB_BOTTOM) next = contentHeights[page];
     offsets[page] = std::clamp(next, 0, std::max(0, contentHeights[page] - height)); Layout();
@@ -158,8 +160,15 @@ LRESULT MainWindow::Impl::Message(HWND window, UINT message, WPARAM word, LPARAM
     case WM_COMMAND: Command(LOWORD(word), HIWORD(word)); return 0;
     case WM_DRAWITEM: DrawButton(*reinterpret_cast<DRAWITEMSTRUCT*>(parameter)); return TRUE;
     case WM_MEASUREITEM: reinterpret_cast<MEASUREITEMSTRUCT*>(parameter)->itemHeight = Scale(24); return TRUE;
-    case WM_VSCROLL: if (page >= 0) { SCROLLINFO info{sizeof(SCROLLINFO), SIF_TRACKPOS}; GetScrollInfo(window, SB_VERT, &info); ScrollPage(page, LOWORD(word), info.nTrackPos); } return 0;
-    case WM_MOUSEWHEEL: ScrollPage(page < 0 ? selectedPage : page, GET_WHEEL_DELTA_WPARAM(word) > 0 ? SB_LINEUP : SB_LINEDOWN); return 0;
+    case WM_VSCROLL: if (page >= 0 && parameter == 0) {
+        SCROLLINFO info{sizeof(SCROLLINFO), SIF_TRACKPOS}; GetScrollInfo(window, SB_VERT, &info);
+        const int command = LOWORD(word); int position = info.nTrackPos;
+        if ((command == SB_THUMBTRACK || command == SB_THUMBPOSITION) && static_cast<WORD>(position) != HIWORD(word)) position = HIWORD(word);
+        ScrollPage(page, command, position);
+    } return 0;
+    case WM_MOUSEWHEEL:
+        if (nativeWheelRecipient || RouteWheel(window, word, parameter)) return 0;
+        return DefWindowProcW(window, message, word, parameter);
     case WM_CTLCOLORSTATIC: case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: {
         const auto dc = reinterpret_cast<HDC>(word); SetTextColor(dc, message == WM_CTLCOLORSTATIC ? ui::Dim : ui::Text);
         SetBkColor(dc, message == WM_CTLCOLORSTATIC ? ui::Back : ui::Surface);

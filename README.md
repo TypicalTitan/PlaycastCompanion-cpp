@@ -17,7 +17,7 @@ profile shows that you're hosting**. The instant the guest session ends, everyth
 hands back — your Synapse / iCUE / GG profiles return and the Discord status clears.
 You never touch it after install; it watches Windows and reacts.
 
-**Download:** [Native 3.2.0 installer and portable builds](https://github.com/TypicalTitan/PlaycastCompanion-cpp/releases/tag/v3.2.0).
+**Download:** [Native 3.2.1 installer and portable builds](https://github.com/TypicalTitan/PlaycastCompanion-cpp/releases/tag/v3.2.1).
 The [regular C# 2.5.0 build](https://github.com/TypicalTitan/PlaycastCompanion/releases/tag/v2.5.0)
 has the same sidebar and local log-analysis workflow. Both variants share an
 install folder and configuration; choose the one you want to run.
@@ -72,6 +72,10 @@ The six sidebar pages are **Overview**, **Lighting**, **Discord**, **Session log
 **Discard** restores the saved settings. The resizable window uses Win32 + GDI+
 with a slate palette and gold accents. These images come from its side-effect-free
 `--snapshot` harness using a synthetic session capture.
+
+Native 3.2.1 fixes mouse-wheel routing between the page, analyzer list, and text
+inspector. Scrolling follows the pointer while keyboard focus stays in place;
+closed dropdowns no longer change the analyzer view when scrolling the page.
 
 ## Why native
 
@@ -138,7 +142,7 @@ with a slate palette and gold accents. These images come from its side-effect-fr
    `installer\payload`, compiles the NSIS script, and fails loudly if anything
    is missing.
 
-CI builds, runs both CTest contract suites, and packages the installer on every
+CI builds, runs all three CTest contract suites, and packages the installer on every
 push ([`.github/workflows/build.yml`](.github/workflows/build.yml)). It uploads
 the executable and installer as artifacts. Run contracts locally with
 `ctest --test-dir build --output-on-failure` from a configured developer shell.
@@ -354,6 +358,8 @@ PlaycastCompanion-cpp/
   a blackout or touches Discord.
 - `--snapshot-log <file>` adds all analyzer views to `--snapshot` using a local
   capture file; the screenshot harness does not start the session logger.
+- `--test-ui-scroll` runs the mouse-wheel contracts on real offscreen controls,
+  with session capture, lighting, and Discord disabled.
 - `--lamps [file]` lists every LampArray device the OS exposes and whether the
   app can drive it.
 - `--autostart` quiet start (used by the Run key); a second manual launch just

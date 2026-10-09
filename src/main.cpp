@@ -8,6 +8,7 @@
 #include "DynamicLightingController.h"
 #include "Log.h"
 #include "MainWindow.h"
+#include "UiScrollContracts.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -23,6 +24,7 @@ struct Options {
     bool lamps = false;
     std::optional<std::wstring> lampsPath;
     bool snapshot = false;
+    bool testUiScroll = false;
     std::optional<std::wstring> snapshotDir;
     std::optional<std::wstring> snapshotLog;
 };
@@ -49,6 +51,8 @@ Options ParseArgs() {
     for (int i = 1; i < argc; ++i) {
         if (EqualsIgnoreCase(argv[i], L"--autostart"))
             options.autostart = true;
+        else if (EqualsIgnoreCase(argv[i], L"--test-ui-scroll"))
+            options.testUiScroll = true;
         else if (lampsIdx < 0 && EqualsIgnoreCase(argv[i], L"--lamps"))
             lampsIdx = i;
         else if (snapshotIdx < 0 && EqualsIgnoreCase(argv[i], L"--snapshot"))
@@ -284,6 +288,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     GdiplusScope gdiplus;
 
     try {
+        if (options.testUiScroll)
+            return pc::RunUiScrollContracts(instance);
         if (options.snapshot)
             return RunSnapshot(instance, options);
         return RunApp(instance, options.autostart);

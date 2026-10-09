@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(PlaycastCompanion VERSION 3.2.0 LANGUAGES CXX RC)
+project(PlaycastCompanion VERSION 3.2.1 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -73,4 +73,5 @@ if(BUILD_TESTING)
   set_property(TARGET NativeLogAnalysisContracts PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   target_link_libraries(NativeLogAnalysisContracts PRIVATE windowsapp runtimeobject ole32)
   add_test(NAME NativeLogAnalysisContracts COMMAND NativeLogAnalysisContracts)
+  add_test(NAME NativeUiScrollContracts COMMAND PlaycastCompanion --test-ui-scroll)
 endif()

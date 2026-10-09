@@ -22,7 +22,7 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      - name: Logger and analyzer contracts
+      - name: Contract tests
         run: ctest --test-dir build --output-on-failure
 
       - name: Install NSIS
