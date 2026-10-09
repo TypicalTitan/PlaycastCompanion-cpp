@@ -5,7 +5,6 @@
 ![platform: Windows 10 / 11](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D6)
 ![language: C++20](https://img.shields.io/badge/C%2B%2B-20-00599C)
 ![no dependencies](https://img.shields.io/badge/dependencies-none-success)
-![binary: ~0.9 MB](https://img.shields.io/badge/binary-~0.9%20MB-brightgreen)
 
 > **Unofficial.** A personal, open-source Windows utility for people who host
 > cloud-gaming sessions with Playcast. It is not affiliated with, endorsed by, or
@@ -18,14 +17,20 @@ profile shows that you're hosting**. The instant the guest session ends, everyth
 hands back — your Synapse / iCUE / GG profiles return and the Discord status clears.
 You never touch it after install; it watches Windows and reacts.
 
+**Download:** [Native 3.2.0 installer and portable builds](https://github.com/TypicalTitan/PlaycastCompanion-cpp/releases/tag/v3.2.0).
+The [regular C# 2.5.0 build](https://github.com/TypicalTitan/PlaycastCompanion/releases/tag/v2.5.0)
+has the same sidebar and local log-analysis workflow. Both variants share an
+install folder and configuration; choose the one you want to run.
+
 <p align="center">
-  <img src="docs/screenshots/status.png" width="420" alt="Status tab — at-a-glance state">
+  <img src="docs/screenshots/overview.png" width="500" alt="Overview sidebar page">
   &nbsp;
-  <img src="docs/screenshots/lighting.png" width="420" alt="Lighting tab — one card per RGB ecosystem">
+  <img src="docs/screenshots/lighting.png" width="500" alt="Compact lighting controls">
 </p>
 
-- Detects the guest session from Windows itself (WTS session notifications) —
-  it never reads, hooks, or modifies Playcast.
+- Detects guest sessions from Windows session notifications and the optional
+  registry signal. A local Playcast diagnostic feed supplies realtime and script
+  details when the host contains the Companion hook.
 - Lighting: **Razer Chroma**, **SteelSeries GameSense**, **Logitech G**,
   **Corsair iCUE**, **OpenRGB** (motherboards, RAM, GPUs…), and **Windows
   Dynamic Lighting**, each individually selectable and safe to run together.
@@ -33,13 +38,17 @@ You never touch it after install; it watches Windows and reacts.
   (*Nonsole Mode* = your guest account, named `NonsoleMode` by default).
 - Runs unelevated, starts with Windows for every account, headless in the guest
   session, dark-themed settings window in yours.
+- Automatically captures real guest sessions into local JSONL logs, with game
+  inventory, process/resource snapshots, backend status, and feed coverage.
+- Imports captured files or folders into a local analyzer with timelines,
+  communication, script results, game inventory, and memory/CPU plots.
 
 ## At a glance
 
 | Aspect | Detail |
 |---|---|
-| **Binary** | one statically-linked `PlaycastCompanion.exe`, ~0.9 MB, no runtime to install |
-| **Source** | ~9,000 lines of C++20 across 21 self-contained modules |
+| **Binary** | one statically linked `PlaycastCompanion.exe`, no runtime to install |
+| **Source** | focused C++20 modules for backends, session capture, import, and UI |
 | **Dependencies** | none beyond the Windows SDK (Win32, WinHTTP, Winsock, GDI+, C++/WinRT) |
 | **Lighting ecosystems** | 6, each an isolated backend behind one interface |
 | **Elevation** | never — runs `asInvoker`; only install / uninstall / config-save prompt for UAC |
@@ -48,27 +57,26 @@ You never touch it after install; it watches Windows and reacts.
 
 ## Screenshots
 
-| Status | Lighting |
+| Overview | Lighting |
 |---|---|
-| ![Status tab](docs/screenshots/status.png) | ![Lighting tab](docs/screenshots/lighting.png) |
-| Live state at a glance: is a guest signed in, are the lights held, is Discord live, does it start with Windows. **Preview guest mode (10 s)** runs the whole effect on demand. | One brand-styled card per ecosystem, each with an enable toggle and its own status. Enable several — they never fight over the same hardware. |
+| ![Overview](docs/screenshots/overview.png) | ![Lighting](docs/screenshots/lighting.png) |
+| Guest, lighting, Discord, and startup state. **Preview guest mode (10 s)** tests the effects without starting session capture. | Six compact ecosystem rows, individual status, and expandable advanced options. |
 
-| Discord | Advanced |
+| Session logs | Analyze logs |
 |---|---|
-| ![Discord tab](docs/screenshots/discord.png) | ![Advanced tab](docs/screenshots/advanced.png) |
-| A live preview of the presence, editable status lines, the hosting template, and the optional game pass-through toggle. | Guest account name, disconnected-session behaviour, the optional registry signal, and quick links to the log and install folder. |
+| ![Session logs](docs/screenshots/session-logs.png) | ![Analyze logs](docs/screenshots/analyze-timeline.png) |
+| Capture status, local folder, automatic logging, and the debug secrets toggle. | Category timeline, record selection, capture gaps, and the original record with file/line provenance. |
 
-The Lighting tab scrolls; the
-[remaining cards](docs/screenshots/lighting-2.png) are OpenRGB and Windows
-Dynamic Lighting. The window is drawn entirely in Win32 + GDI+ — the dark theme,
-the owner-drawn tab strip, the gold accents and the app mark are all rendered by
-the app (these shots are produced by its own `--snapshot` harness).
+The six sidebar pages are **Overview**, **Lighting**, **Discord**, **Session logs**,
+**Analyze logs**, and **Settings**. Edits remain staged until **Save changes**;
+**Discard** restores the saved settings. The resizable window uses Win32 + GDI+
+with a slate palette and gold accents. These images come from its side-effect-free
+`--snapshot` harness using a synthetic session capture.
 
 ## Why native
 
-- **No .NET runtime.** One statically linked Win32 exe (~0.9 MB) instead of a
-  ~50 MB self-contained publish. Nothing to install or keep patched besides
-  Windows itself.
+- **No .NET runtime.** One statically linked Win32 exe. Nothing to install or
+  keep patched besides Windows itself.
 - **Instant start.** No JIT, no runtime extraction — the tray icon is up the
   moment you log on, in your session and in the guest's.
 - **Drop-in upgrade.** It reads the same `config.json`, uses the same install
@@ -130,9 +138,10 @@ the app (these shots are produced by its own `--snapshot` harness).
    `installer\payload`, compiles the NSIS script, and fails loudly if anything
    is missing.
 
-CI does steps 1–2 on every push ([`.github/workflows/build.yml`](.github/workflows/build.yml))
-and uploads `PlaycastCompanion.exe` as an artifact, so a green check means the
-repo builds from scratch.
+CI builds, runs both CTest contract suites, and packages the installer on every
+push ([`.github/workflows/build.yml`](.github/workflows/build.yml)). It uploads
+the executable and installer as artifacts. Run contracts locally with
+`ctest --test-dir build --output-on-failure` from a configured developer shell.
 
 ## Install
 
@@ -153,14 +162,28 @@ contains `PlaycastCompanion.exe`), and the current user's log folder.
 
 1. Launch it (Start Menu, or the exe). A dark settings window opens; the tray
    icon is the app mark — bright when idle, dimmed while a guest is hosting.
-2. **Advanced tab → Guest account name**: the Windows account your host signs
+2. **Settings → Guest Windows account**: the Windows account your host signs
    guests into (default `NonsoleMode`). Case-insensitive.
-3. **Lighting tab**: tick the ecosystems you own.
-4. **Discord tab** (optional): see *Discord* below.
-5. **Save**. Lighting and Discord toggles apply immediately; account/registry
-   changes take effect on restart (the app offers one).
-6. **Status tab → Preview guest mode (10 s)** runs the full effect so you can
+3. **Lighting**: tick the ecosystems you own.
+4. **Discord** (optional): see *Discord* below.
+5. **Save changes** applies the edited configuration. Account/registry changes
+   take effect on restart (the app offers one).
+6. **Overview → Preview guest mode (10 s)** runs the full effect so you can
    see it without a real guest.
+
+## Session logging and local analysis
+
+Captures start automatically for real guest sessions, including passive game and
+resource snapshots. Complete realtime messages and PowerShell bodies require the
+Playcast diagnostic hook. Credentials are redacted by default; the in-app secrets
+toggle affects this process only and resets on restart.
+
+**Analyze logs** imports files or folders, accepts dropped files, and includes a
+synthetic sample. Timeline, Communications, Scripts, Games, and Health views show
+captured content with source file/line provenance and explicit unknown coverage.
+Imports stay local and scripts are never executed. Read
+[the logging and analysis guide](docs/SESSION_LOGGING.md) for usage, privacy,
+capture limits, and the host-hook requirement.
 
 ## How it works
 
@@ -210,7 +233,7 @@ seventh ecosystem is one class.
   frames are length-capped (≤ 1 MB), names are bounded, control characters are
   stripped, and the Chroma REST URL is forced to loopback.
 
-**Source layout** (`src/`, ~9,000 lines, no external dependencies):
+**Source layout** (`src/`, no external dependencies):
 
 ```
 Log · Json · Config · Http          core: logging, JSON (Windows.Data.Json), config, WinHTTP
@@ -222,7 +245,9 @@ SessionWatcher · RegistryWatcher    the guest-mode signals
 DiscordPresence · GameNameCache     Rich Presence over the local IPC pipe + id→name resolver
 DiscordShim                         optional guest→owner game pass-through (shim + ACL'd relay)
 TrayApp · main                      orchestration, tray icon, single-instance, CLI flags
-MainWindow · Branding               the Win32 + GDI+ settings window and drawn marks
+MainWindow* · Branding              sidebar pages, controls, charts and drawn marks
+SessionLogging*                    pipe, privacy, storage, inventory and snapshots
+LogAnalysis*                       bounded importer and record projections
 ```
 
 ## Lighting engines
@@ -248,7 +273,7 @@ side by side.
 3. Optionally upload an image as a **Rich Presence → Art Asset** with the key
    in `Discord.LargeImageKey`.
 
-The two status lines are editable on the Discord tab, with a live preview.
+The two status lines are editable on the Discord page, with a live preview.
 
 ### Game pass-through (optional, default OFF)
 Can turn the line into **"Hosting Fortnite in Nonsole Mode"**. A shim in the
@@ -286,6 +311,8 @@ compatible with the C# build's — key names and semantics are identical.
 | `Discord.Enabled` / `.ApplicationId` / `.Details` / `.State` / `.LargeImageKey` / `.LargeImageText` | — | Rich Presence settings. |
 | `Discord.GamePassthroughEnabled` / `.HostingTemplate` / `.ShimFallbackGame` / `.ShimPipeName` | `false` / `Hosting {game} in Nonsole Mode` / … | Game pass-through. |
 | `RegistryWatch.*` | disabled | Optional extra guest-mode signal (a registry value Playcast writes while a guest display is up), ORed with session detection. |
+| `SessionLogging.Enabled` / `.SnapshotIntervalSeconds` | `true` / `30` | Automatically capture real target sessions and periodic passive snapshots. |
+| `SessionLogging.MaxFileBytes` / `.MaxSessionBytes` / `.RetentionDays` | 10 MiB / 100 MiB / `14` | File rotation, total session budget, and completed-session retention. |
 
 ## Security model
 
@@ -309,7 +336,8 @@ compatible with the C# build's — key names and semantics are identical.
 
 ```
 PlaycastCompanion-cpp/
-├─ src/                     21 .cpp + 21 .h — the app (see Architecture)
+├─ src/                     focused application modules (see Architecture)
+├─ tests/                   session logger and importer contracts
 ├─ installer/               NSIS setup: installer.nsi + build-setup.cmd
 ├─ docs/screenshots/        the images above
 ├─ .github/workflows/       CI: build.yml (MSVC + Ninja on windows-latest)
@@ -321,9 +349,11 @@ PlaycastCompanion-cpp/
 
 ## Dev harness flags
 
-- `--snapshot <dir>` renders every settings tab to PNG (review UI without a
+- `--snapshot <dir>` renders every sidebar page to PNG (review UI without a
   desktop; these README shots come from it). Side-effect free — it never starts
   a blackout or touches Discord.
+- `--snapshot-log <file>` adds all analyzer views to `--snapshot` using a local
+  capture file; the screenshot harness does not start the session logger.
 - `--lamps [file]` lists every LampArray device the OS exposes and whether the
   app can drive it.
 - `--autostart` quiet start (used by the Run key); a second manual launch just
