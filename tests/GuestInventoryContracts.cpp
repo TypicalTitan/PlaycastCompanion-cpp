@@ -8,13 +8,20 @@ using namespace pc::sessionlog;
 namespace {
 void Require(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 struct Fixture {
-    std::filesystem::path root = std::filesystem::temp_directory_path() /
-        std::format(L"pc-guest-inventory-{}-{}", GetCurrentProcessId(), GetTickCount64());
-    Fixture() { std::filesystem::create_directories(root); }
+    std::filesystem::path root, parent;
+    explicit Fixture(ULONGLONG clockTick = GetTickCount64()) {
+        parent = std::filesystem::absolute(std::filesystem::temp_directory_path()).lexically_normal();
+        if (parent.filename().empty()) parent = parent.parent_path();
+        static std::atomic_uint sequence{0};
+        root = parent / std::format(L"pc-guest-inventory-{}-{}-{}", GetCurrentProcessId(), clockTick, ++sequence);
+        Require(std::filesystem::create_directory(root), "Guest fixture directory must be newly created, not reused");
+    }
     ~Fixture() {
+        const auto resolved = root.lexically_normal();
         std::error_code error;
-        if (root.parent_path() == std::filesystem::temp_directory_path() && root.filename().wstring().starts_with(L"pc-guest-inventory-"))
-            std::filesystem::remove_all(root, error);
+        if (resolved.is_absolute() && resolved.parent_path() == parent
+            && resolved.filename().wstring().starts_with(L"pc-guest-inventory-"))
+            std::filesystem::remove_all(resolved, error);
     }
     void Write(const std::filesystem::path& path, std::string_view content) {
         std::filesystem::create_directories(path.parent_path());
@@ -27,6 +34,20 @@ struct Fixture {
         std::filesystem::create_directories(library / L"steamapps" / L"common" / json::Utf8ToWide(name));
     }
 };
+void FixtureIsolationContract() {
+    std::filesystem::path firstRoot, secondRoot;
+    {
+        // Force the same clock tick: isolation must not depend on CI filesystem speed.
+        Fixture first(1234), second(1234);
+        firstRoot = first.root; secondRoot = second.root;
+        Require(firstRoot != secondRoot, "Simultaneous guest fixtures at the same tick must remain independent");
+        first.Write(firstRoot / L"sentinel.txt", "first fixture only");
+        Require(std::filesystem::exists(firstRoot / L"sentinel.txt"), "Fixture isolation must exercise a file that was actually created");
+        Require(!std::filesystem::exists(secondRoot / L"sentinel.txt"), "Fixture files must not leak into another test");
+    }
+    Require(!std::filesystem::exists(firstRoot) && !std::filesystem::exists(secondRoot),
+        "Guest fixtures must clean up their verified temporary roots, including trailing-separator temp paths");
+}
 void GuestRootsContract() {
     Fixture fixture;
     const auto profile = fixture.root / L"NonsoleMode.000";
@@ -114,9 +135,10 @@ void LegendaryAlternatesContract() {
 }
 }
 int RunGuestInventoryContracts() {
+    FixtureIsolationContract(); std::cout << "PASS guest fixture isolation and cleanup\n";
     GuestRootsContract(); std::cout << "PASS guest launcher roots\n";
     LegendaryContract(); std::cout << "PASS guest Legendary inventory\n";
     GuestVariableContract(); std::cout << "PASS guest environment expansion\n";
     LegendaryAlternatesContract(); std::cout << "PASS canonical guest Legendary sources\n";
-    return 4;
+    return 5;
 }

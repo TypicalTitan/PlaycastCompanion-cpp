@@ -17,7 +17,7 @@ profile shows that you're hosting**. The instant the guest session ends, everyth
 hands back — your Synapse / iCUE / GG profiles return and the Discord status clears.
 You never touch it after install; it watches Windows and reacts.
 
-**Download:** [Native 3.2.2 installer and portable builds](https://github.com/TypicalTitan/PlaycastCompanion-cpp/releases/tag/v3.2.2).
+**Download:** [Native 3.2.3 installer and portable builds](https://github.com/TypicalTitan/PlaycastCompanion-cpp/releases/tag/v3.2.3).
 The [regular C# 2.5.1 build](https://github.com/TypicalTitan/PlaycastCompanion/releases/tag/v2.5.1)
 has the same sidebar and local log-analysis workflow. Both variants share an
 install folder and configuration; choose the one you want to run.
@@ -81,6 +81,10 @@ Native 3.2.2 corrects guest launcher discovery, retains inaccessible Playcast
 processes with partial coverage, and adds bounded final snapshots after session
 cleanup. Dynamic Lighting cannot accumulate cancelled-but-pending operations;
 Chroma release status reflects the actual HTTP result.
+
+Native 3.2.3 derives executable version resources from the CMake project version
+and isolates guest inventory fixtures, correcting the Windows file version and
+a fast-runner CI failure. It includes all 3.2.2 fixes.
 
 ## Why native
 

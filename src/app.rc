@@ -3,8 +3,8 @@
 1 RT_MANIFEST "app.manifest"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 3,2,1,0
- PRODUCTVERSION 3,2,1,0
+ FILEVERSION PC_VERSION_MAJOR,PC_VERSION_MINOR,PC_VERSION_PATCH,0
+ PRODUCTVERSION PC_VERSION_MAJOR,PC_VERSION_MINOR,PC_VERSION_PATCH,0
  FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
  FILEFLAGS 0
  FILEOS VOS_NT_WINDOWS32
@@ -17,12 +17,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "TypicalTitan"
             VALUE "FileDescription", "Playcast Companion"
-            VALUE "FileVersion", "3.2.1.0"
+            VALUE "FileVersion", PC_FILE_VERSION_STRING
             VALUE "InternalName", "PlaycastCompanion"
             VALUE "LegalCopyright", "MIT License - github.com/TypicalTitan/PlaycastCompanion-cpp"
             VALUE "OriginalFilename", "PlaycastCompanion.exe"
             VALUE "ProductName", "Playcast Companion"
-            VALUE "ProductVersion", "3.2.1"
+            VALUE "ProductVersion", PC_VERSION_STRING
         END
     END
     BLOCK "VarFileInfo"

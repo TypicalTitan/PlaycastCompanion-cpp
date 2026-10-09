@@ -33,6 +33,6 @@ if "%~2"=="" ( echo usage: build.cmd check File.cpp & exit /b 1 )
 if not exist "%TEMP%\pc-check" mkdir "%TEMP%\pc-check"
 cl /nologo /c /std:c++20 /permissive- /W4 /WX /sdl /EHsc /utf-8 /Zc:__cplusplus /bigobj /await:strict ^
    /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_WIN32_WINNT=0x0A00 ^
-   /DPC_VERSION_STRING="\"3.2.1\"" /DPC_VERSION_MAJOR=3 /DPC_VERSION_MINOR=2 /DPC_VERSION_PATCH=1 ^
+   /DPC_VERSION_STRING="\"3.2.3\"" /DPC_VERSION_MAJOR=3 /DPC_VERSION_MINOR=2 /DPC_VERSION_PATCH=3 ^
    /Isrc /Fo"%TEMP%\pc-check\\" "src\%~2"
 exit /b %errorlevel%

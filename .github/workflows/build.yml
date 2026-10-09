@@ -22,6 +22,20 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Version metadata
+        shell: pwsh
+        run: |
+          $project = Get-Content CMakeLists.txt -Raw
+          $version = [regex]::Match($project, 'project\(PlaycastCompanion VERSION (\d+\.\d+\.\d+) ').Groups[1].Value
+          if (-not $version) { throw 'Could not read the project version' }
+          $metadata = (Get-Item build/PlaycastCompanion.exe).VersionInfo
+          if ($metadata.ProductVersion -ne $version -or $metadata.FileVersion -ne "$version.0") {
+            throw "Executable version differs from CMake: $($metadata.ProductVersion) / $($metadata.FileVersion)"
+          }
+          $installer = Get-Content installer/installer.nsi -Raw
+          $setupVersion = [regex]::Match($installer, '!define APP_VERSION\s+"([^"\r\n]+)"').Groups[1].Value
+          if ($setupVersion -ne $version) { throw 'Installer version differs from CMake' }
+
       - name: Contract tests
         run: ctest --test-dir build --output-on-failure
 
