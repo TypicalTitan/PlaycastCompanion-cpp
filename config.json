@@ -54,10 +54,7 @@
     "HostingTemplate": "Hosting {game} in Nonsole Mode"
   },
 
-  // Optional secondary signal, ORed with session detection. Off by default;
-  // the session (WTS username == NonsoleMode) signal alone is authoritative.
-  // Default watches VirtualDisplayDeviceName under GuestMode — a REG_SZ Playcast
-  // writes only while the guest virtual display is up.
+  // Capture real guest sessions. Raw-secret capture is a process-only UI toggle.
   "SessionLogging": {
     "Enabled": true,
     "SnapshotIntervalSeconds": 30,
@@ -65,6 +62,10 @@
     "MaxSessionBytes": 104857600,
     "RetentionDays": 14
   },
+  // Optional secondary signal, ORed with session detection. Off by default;
+  // the session (WTS username == NonsoleMode) signal alone is authoritative.
+  // Default watches VirtualDisplayDeviceName under GuestMode — a REG_SZ Playcast
+  // writes only while the guest virtual display is up.
   "RegistryWatch": {
     "Enabled": false,
     "Hive": "HKLM",
