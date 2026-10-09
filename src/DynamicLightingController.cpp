@@ -61,40 +61,6 @@ using winrt::Windows::Foundation::AsyncStatus;
 constexpr std::chrono::seconds kEnumerateTimeout{10};
 constexpr std::chrono::seconds kOpenTimeout{5};
 
-/// Set by the Completed handler. Shared with the handler so that a late
-/// completion of an abandoned (timed-out) operation still has a live target.
-struct CompletionSignal {
-    UniqueHandle event{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
-};
-
-/// Blocks until `async` leaves the Started state, `timeout` elapses, or a stop
-/// is requested. Returns the final status; Started means "still running" (the
-/// operation is cancelled before returning so nothing of ours outlives it).
-template <typename Async>
-AsyncStatus WaitBounded(const Async& async, std::chrono::milliseconds timeout, std::stop_token stop = {}) {
-    if (async.Status() != AsyncStatus::Started)
-        return async.Status();
-    auto signal = std::make_shared<CompletionSignal>();
-    if (!signal->event.valid())
-        throw std::runtime_error("CreateEvent failed");
-    async.Completed([signal](const auto&, AsyncStatus) { SetEvent(signal->event.get()); });
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    for (;;) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline || stop.stop_requested())
-            break;
-        const long long remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-        const DWORD slice = static_cast<DWORD>(std::min<long long>(remaining, 250));
-        if (WaitForSingleObject(signal->event.get(), slice) == WAIT_OBJECT_0)
-            return async.Status();
-    }
-    try {
-        async.Cancel();
-    } catch (...) {
-    }
-    return AsyncStatus::Started;
-}
-
 std::wstring HresultText(const winrt::hresult_error& e) {
     const std::wstring_view message(e.message());
     return std::format(L"hresult 0x{:08X}: {}", static_cast<uint32_t>(e.code()), message);
@@ -157,10 +123,9 @@ void WriteReport(const std::wstring& outPath, const std::wstring& text) {
 void EnumerateLamps(const std::function<void(const std::wstring&)>& line) {
     try {
         EnsureApartment();
-        const auto findAll = DeviceInformation::FindAllAsync(LampArray::GetDeviceSelector());
-        if (WaitBounded(findAll, kEnumerateTimeout) == AsyncStatus::Started)
-            throw std::runtime_error("LampArray enumeration timed out");
-        const DeviceInformationCollection devices = findAll.GetResults();
+        WinRtOperationGate operations;
+        const DeviceInformationCollection devices = operations.Invoke(
+            [] { return DeviceInformation::FindAllAsync(LampArray::GetDeviceSelector()); }, kEnumerateTimeout);
         line(std::format(L"selector matched {} device(s)", devices.Size()));
 
         int idx = 0;
@@ -169,12 +134,8 @@ void EnumerateLamps(const std::function<void(const std::wstring&)>& line) {
             line(std::format(L"[{}] name='{}' enabled={} id={}", idx, std::wstring_view(info.Name()),
                              BoolText(info.IsEnabled()), Trunc(info.Id())));
             try {
-                const auto open = LampArray::FromIdAsync(info.Id());
-                if (WaitBounded(open, kOpenTimeout) == AsyncStatus::Started) {
-                    line(std::format(L"     open failed (timed out after {} s)", kOpenTimeout.count()));
-                    continue;
-                }
-                const LampArray lamp = open.GetResults();
+                const LampArray lamp = operations.Invoke(
+                    [&info] { return LampArray::FromIdAsync(info.Id()); }, kOpenTimeout);
                 if (!lamp) {
                     line(L"     FromIdAsync returned null (device not openable by us)");
                     continue;
@@ -246,13 +207,10 @@ void DynamicLightingController::ApplyTick(std::stop_token stop) {
         EnsureApartment();
         if (stop.stop_requested())
             return;
-        const auto findAll = DeviceInformation::FindAllAsync(LampArray::GetDeviceSelector());
-        const AsyncStatus findStatus = WaitBounded(findAll, kEnumerateTimeout, stop);
+        const DeviceInformationCollection devices = operations_.Invoke(
+            [] { return DeviceInformation::FindAllAsync(LampArray::GetDeviceSelector()); }, kEnumerateTimeout, stop);
         if (stop.stop_requested())
             return;
-        if (findStatus == AsyncStatus::Started)
-            throw std::runtime_error("LampArray enumeration timed out");
-        const DeviceInformationCollection devices = findAll.GetResults();
         if (devices.Size() == 0)
             throw std::runtime_error("no LampArray devices connected");
 
@@ -260,19 +218,18 @@ void DynamicLightingController::ApplyTick(std::stop_token stop) {
             if (stop.stop_requested())
                 return;
             try {
-                const auto open = LampArray::FromIdAsync(info.Id());
-                const AsyncStatus openStatus = WaitBounded(open, kOpenTimeout, stop);
+                const LampArray lamp = operations_.Invoke(
+                    [&info] { return LampArray::FromIdAsync(info.Id()); }, kOpenTimeout, stop);
                 if (stop.stop_requested())
                     return;
-                if (openStatus == AsyncStatus::Started)
-                    continue;  // wedged device: skip it this tick like any other flaky one
-                const LampArray lamp = open.GetResults();
                 if (!lamp || !lamp.IsConnected())
                     continue;
                 if (std::find(excluded.begin(), excluded.end(), lamp.HardwareVendorId()) != excluded.end()) {
                     ++skipped;
                     continue;  // its own engine handles this device
                 }
+                if (stop.stop_requested())
+                    return;
                 lamp.SetColor(kBlack);
                 ++painted;
             } catch (...) {

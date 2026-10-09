@@ -211,6 +211,7 @@ struct TrayApp::Impl {
     // workers
     void EvalLoop(std::stop_token stop);
     void Evaluate(const std::wstring& reason, std::stop_token stop);
+    void PublishBackendStatus();
     bool ApplySettings(std::stop_token stop);  // eval thread; false when stopping
     void RunPreview();                         // eval thread
     void SignalLoop();

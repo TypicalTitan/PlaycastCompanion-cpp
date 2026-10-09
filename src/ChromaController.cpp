@@ -36,12 +36,15 @@ void EnsureSuccess(const http::Response& resp, const char* method, const std::ws
                                          resp.status, method, json::WideToUtf8(url)));
 }
 
-void Put(const std::wstring& url, const std::string& body) {
-    EnsureSuccess(http::Request("PUT", url, body, L"application/json", kEffectTimeoutMs), "PUT", url);
-}
 }  // namespace
 
-ChromaController::ChromaController(const AppConfig& cfg) : cfg_(cfg) {}
+ChromaController::ChromaController(const AppConfig& cfg, Request request)
+    : cfg_(cfg), request_(request ? std::move(request) : Request([](const auto& method, const auto& url,
+            const auto& body, unsigned timeout) { return http::Request(method, url, body, L"application/json", timeout); })) {}
+
+void ChromaController::Put(const std::wstring& url, const std::string& body) {
+    EnsureSuccess(request_("PUT", url, body, kEffectTimeoutMs), "PUT", url);
+}
 
 bool ChromaController::Enabled() const { return cfg_.RazerEnabled; }
 
@@ -102,13 +105,14 @@ int ChromaController::ApplyEffects(std::stop_token stop) {
 
 void ChromaController::InitSession() {
     const http::Response resp =
-        http::Request("POST", cfg_.ChromaInitUrl, kInitJson, L"application/json", kInitTimeoutMs);
+        request_("POST", cfg_.ChromaInitUrl, kInitJson, kInitTimeoutMs);
     EnsureSuccess(resp, "POST", cfg_.ChromaInitUrl);
     const json::JsonObject doc = json::Parse(resp.body);
     std::wstring uri = json::GetString(doc, L"uri");
     if (uri.empty())
         throw std::runtime_error("Chroma init response had no uri");
     sessionUri_ = std::move(uri);
+    releaseStatus_ = L"Ready";
     LogInfo(L"Chroma session opened: " + sessionUri_);
 }
 
@@ -118,11 +122,18 @@ void ChromaController::Release() {
     if (uri.empty())
         return;
     try {
-        const http::Response resp = http::Request("DELETE", uri, {}, L"application/json", kEffectTimeoutMs);
-        LogInfo(std::format(L"Chroma session released (HTTP {}); Synapse lighting restored", resp.status));
+        const http::Response resp = request_("DELETE", uri, {}, kEffectTimeoutMs);
+        if (http::IsSuccess(resp)) {
+            releaseStatus_ = L"Hold ended; Chroma session released";
+            LogInfo(std::format(L"Chroma session released (HTTP {}); Synapse control can resume; lighting restoration not observed", resp.status));
+        } else {
+            releaseStatus_ = L"Hold ended; Chroma release unverified";
+            LogInfo(std::format(L"Chroma hold ended; DELETE returned HTTP {}; SDK expiry expected after ~15 s without commands; lighting restoration unverified", resp.status));
+        }
     } catch (const std::exception& ex) {
-        LogInfo(L"Chroma release failed (" + json::Utf8ToWide(ex.what()) +
-                L"); the session will time out on its own in ~15 s");
+        releaseStatus_ = L"Hold ended; Chroma release unverified";
+        LogInfo(L"Chroma hold ended; endpoint unavailable (" + json::Utf8ToWide(ex.what()) +
+                L"); SDK expiry expected after ~15 s without commands; lighting restoration unverified");
     }
 }
 }  // namespace pc

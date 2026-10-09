@@ -17,8 +17,8 @@ profile shows that you're hosting**. The instant the guest session ends, everyth
 hands back — your Synapse / iCUE / GG profiles return and the Discord status clears.
 You never touch it after install; it watches Windows and reacts.
 
-**Download:** [Native 3.2.1 installer and portable builds](https://github.com/TypicalTitan/PlaycastCompanion-cpp/releases/tag/v3.2.1).
-The [regular C# 2.5.0 build](https://github.com/TypicalTitan/PlaycastCompanion/releases/tag/v2.5.0)
+**Download:** [Native 3.2.2 installer and portable builds](https://github.com/TypicalTitan/PlaycastCompanion-cpp/releases/tag/v3.2.2).
+The [regular C# 2.5.1 build](https://github.com/TypicalTitan/PlaycastCompanion/releases/tag/v2.5.1)
 has the same sidebar and local log-analysis workflow. Both variants share an
 install folder and configuration; choose the one you want to run.
 
@@ -76,6 +76,11 @@ with a slate palette and gold accents. These images come from its side-effect-fr
 Native 3.2.1 fixes mouse-wheel routing between the page, analyzer list, and text
 inspector. Scrolling follows the pointer while keyboard focus stays in place;
 closed dropdowns no longer change the analyzer view when scrolling the page.
+
+Native 3.2.2 corrects guest launcher discovery, retains inaccessible Playcast
+processes with partial coverage, and adds bounded final snapshots after session
+cleanup. Dynamic Lighting cannot accumulate cancelled-but-pending operations;
+Chroma release status reflects the actual HTTP result.
 
 ## Why native
 
@@ -142,7 +147,7 @@ closed dropdowns no longer change the analyzer view when scrolling the page.
    `installer\payload`, compiles the NSIS script, and fails loudly if anything
    is missing.
 
-CI builds, runs all three CTest contract suites, and packages the installer on every
+CI builds, runs the CTest contract suites, and packages the installer on every
 push ([`.github/workflows/build.yml`](.github/workflows/build.yml)). It uploads
 the executable and installer as artifacts. Run contracts locally with
 `ctest --test-dir build --output-on-failure` from a configured developer shell.

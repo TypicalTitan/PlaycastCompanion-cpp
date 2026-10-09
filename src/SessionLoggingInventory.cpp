@@ -7,27 +7,15 @@
 
 namespace pc::sessionlog {
 namespace {
-std::wstring RegistryString(HKEY root, const wchar_t* key, const wchar_t* name, DWORD flags = RRF_RT_REG_SZ) {
-    DWORD bytes = 0;
-    if (RegGetValueW(root, key, name, flags, nullptr, nullptr, &bytes) != ERROR_SUCCESS || bytes > 65536) return {};
-    std::wstring value(bytes / sizeof(wchar_t), L'\0');
-    if (RegGetValueW(root, key, name, flags, nullptr, value.data(), &bytes) != ERROR_SUCCESS) return {};
-    while (!value.empty() && !value.back()) value.pop_back();
-    return value;
-}
-std::filesystem::path KnownFolder(REFKNOWNFOLDERID id) {
-    PWSTR value = nullptr;
-    if (FAILED(SHGetKnownFolderPath(id, 0, nullptr, &value))) return {};
-    struct Memory { PWSTR value; ~Memory() { CoTaskMemFree(value); } } memory{value};
-    return value;
-}
 void Coverage(Inventory& result, const std::filesystem::path& path, std::wstring_view status, int count, std::wstring_view error = L"") {
     Array errors;
     if (!error.empty()) errors.Append(Make({{L"Source", Text(path.wstring())}, {L"Status", Text(status)}, {L"Message", Text(error)}}));
     result.sources.Append(Make({{L"Source", Text(path.wstring())}, {L"Status", Text(status)}, {L"EntriesRead", Number(count)}, {L"Errors", errors}}));
 }
 std::wstring Normal(const std::filesystem::path& path) {
-    auto text = std::filesystem::absolute(path).lexically_normal().wstring();
+    std::error_code error;
+    const auto resolved = std::filesystem::weakly_canonical(path, error);
+    auto text = (error ? std::filesystem::absolute(path).lexically_normal() : resolved).wstring();
     std::transform(text.begin(), text.end(), text.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
     std::replace(text.begin(), text.end(), L'/', L'\\');
     while (!text.empty() && text.back() == L'\\') text.pop_back();
@@ -41,16 +29,19 @@ Object InstalledGame::ToJson() const {
 }
 Array Inventory::GamesJson() const { Array result; for (const auto& game : games) result.Append(game.ToJson()); return result; }
 
-GameInventory::GameInventory(std::vector<std::filesystem::path> steamRoots, std::filesystem::path epicManifests)
-    : roots_(std::move(steamRoots)), epic_(std::move(epicManifests)) {
-    if (roots_.empty()) {
-        roots_.push_back(KnownFolder(FOLDERID_ProgramFilesX86) / L"Steam");
-        for (const auto& path : {RegistryString(HKEY_CURRENT_USER, L"Software\\Valve\\Steam", L"SteamPath"),
-            RegistryString(HKEY_LOCAL_MACHINE, L"Software\\Valve\\Steam", L"InstallPath", RRF_RT_REG_SZ | RRF_SUBKEY_WOW6432KEY)})
-            if (!path.empty() && std::filesystem::path(path).is_absolute()) roots_.emplace_back(path);
+GameInventory::GameInventory(std::vector<std::filesystem::path> steamRoots, std::filesystem::path epicManifests,
+    std::wstring targetUsername) {
+    if (steamRoots.empty() && epicManifests.empty()) locations_ = DiscoverGameLocations(targetUsername);
+    else {
+        locations_.steamRoots = std::move(steamRoots);
+        locations_.epicManifests = std::move(epicManifests);
+        locations_.filterSharedEpic = false;
     }
-    if (epic_.empty()) epic_ = KnownFolder(FOLDERID_ProgramData) / L"Epic" / L"EpicGamesLauncher" / L"Data" / L"Manifests";
+    roots_ = locations_.steamRoots;
+    epic_ = locations_.epicManifests;
 }
+GameInventory::GameInventory(GameLocations locations)
+    : roots_(locations.steamRoots), epic_(locations.epicManifests), locations_(std::move(locations)) {}
 
 bool GameInventory::ContainsExecutable(const std::filesystem::path& root, const std::filesystem::path& executable) {
     try { return Normal(executable).starts_with(Normal(root) + L"\\"); }
@@ -70,6 +61,7 @@ std::string GameInventory::ReadManifest(const std::filesystem::path& path) {
 
 Inventory GameInventory::Capture(std::stop_token stop) const {
     Inventory result;
+    for (const auto& source : locations_.sources) result.sources.Append(source);
     std::set<std::filesystem::path> libraries;
     for (const auto& root : roots_) {
         if (stop.stop_requested()) return result;
@@ -88,10 +80,23 @@ Inventory GameInventory::Capture(std::stop_token stop) const {
     }
     for (const auto& library : libraries) { if (stop.stop_requested()) return result; SteamLibrary(library, result, stop); }
     Epic(result, stop);
+    std::set<std::wstring> metadataSeen;
+    const auto readLegendary = [&](const std::filesystem::path& manifest) {
+        if (manifest.empty() || stop.stop_requested()) return;
+        if (!manifest.is_absolute()) {
+            Coverage(result, manifest, L"unavailable", 0, L"Legendary location is not absolute; owner working directory is not substituted.");
+            return;
+        }
+        if (metadataSeen.size() < 3 && metadataSeen.insert(Normal(manifest)).second)
+            Legendary(manifest, result, stop);
+    };
+    readLegendary(locations_.legendaryInstalled);
+    for (const auto& manifest : locations_.legendaryAlternates) readLegendary(manifest);
     std::set<std::wstring> seen;
     std::erase_if(result.games, [&](const InstalledGame& game) { return !seen.insert(game.store + L":" + game.id + L":" + Normal(game.installRoot)).second; });
     result.limitations.Append(Text(L"Steam and Epic manifests only; other launchers and standalone games are not inventoried."));
-    result.limitations.Append(Text(L"Steam discovery uses the Companion account registry and common paths; another account's custom libraries may be unavailable."));
+    result.limitations.Append(Text(L"Launcher discovery uses the target account's current SID/profile and registry, including Playcast Steam and Legendary metadata; protected guest files may be inaccessible from the owner session."));
+    result.limitations.Append(Text(L"Shared Epic manifests without target-account registration are included only when their install location belongs to the target profile or Playcast game storage."));
     result.limitations.Append(Text(L"Running-game matches require an accessible executable under a known installation in the target Windows session."));
     return result;
 }
@@ -123,6 +128,7 @@ void GameInventory::SteamLibrary(const std::filesystem::path& root, Inventory& r
 }
 
 void GameInventory::Epic(Inventory& result, std::stop_token stop) const {
+    if (epic_.empty()) return;
     int count = 0;
     bool partial = false;
     try {
@@ -135,6 +141,8 @@ void GameInventory::Epic(Inventory& result, std::stop_token stop) const {
                 const auto item = json::Parse(ReadManifest(entry.path()));
                 if (json::GetBool(item, L"bIsIncompleteInstall", false)) continue;
                 const std::filesystem::path install(json::GetString(item, L"InstallLocation"));
+                if (locations_.filterSharedEpic && std::none_of(locations_.epicInstallRoots.begin(), locations_.epicInstallRoots.end(),
+                    [&](const auto& root) { return ContainsExecutable(root, install); })) continue;
                 if (!install.is_absolute() || !std::filesystem::is_directory(install)) throw std::runtime_error("Epic installation directory unavailable");
                 const auto id = json::GetString(item, L"AppName");
                 if (id.empty()) throw std::runtime_error("Epic AppName missing");
@@ -143,5 +151,29 @@ void GameInventory::Epic(Inventory& result, std::stop_token stop) const {
         }
         Coverage(result, epic_, partial ? L"partial" : L"available", count);
     } catch (const std::exception& error) { Coverage(result, epic_, L"unavailable", count, json::Utf8ToWide(error.what())); }
+}
+
+void GameInventory::Legendary(const std::filesystem::path& manifest, Inventory& result, std::stop_token stop) const {
+    if (manifest.empty()) return;
+    int count = 0;
+    bool partial = false;
+    try {
+        if (!std::filesystem::exists(manifest)) { Coverage(result, manifest, L"not_found", 0); return; }
+        const auto entries = json::Parse(ReadManifest(manifest));
+        for (const auto& entry : entries) {
+            if (stop.stop_requested()) return;
+            ++count;
+            try {
+                if (entry.Value().ValueType() != Type::Object) throw std::runtime_error("Legendary entry is not an object");
+                const auto item = entry.Value().GetObject();
+                const auto id = json::GetString(item, L"app_name", entry.Key().c_str());
+                const std::filesystem::path install(json::GetString(item, L"install_path"));
+                if (id.empty() || !install.is_absolute() || !std::filesystem::is_directory(install))
+                    throw std::runtime_error("Legendary installation directory unavailable");
+                result.games.push_back({L"epic", id, json::GetString(item, L"title", id), install, manifest});
+            } catch (const std::exception& error) { partial = true; Coverage(result, manifest, L"invalid_manifest", 0, json::Utf8ToWide(error.what())); }
+        }
+        Coverage(result, manifest, partial ? L"partial" : L"available", count);
+    } catch (const std::exception& error) { Coverage(result, manifest, L"unavailable", count, json::Utf8ToWide(error.what())); }
 }
 }

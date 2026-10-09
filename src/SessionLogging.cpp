@@ -1,9 +1,11 @@
 #include "pch.h"
 #include "SessionLogging.h"
 #include "SessionLoggingClassifier.h"
+#include "SessionLoggingLifecycle.h"
 #include "SessionLoggingPipe.h"
 #include "SessionLoggingSnapshot.h"
 #include "SessionLoggingWriter.h"
+#include <deque>
 
 namespace pc {
 using namespace sessionlog;
@@ -17,12 +19,24 @@ struct SessionLogger::Impl {
     mutable std::mutex mutex;
     std::condition_variable_any wake;
     bool snapshotRequested = false;
+    std::stop_source periodicCancellation;
     std::unique_ptr<Writer> writer;
+    struct EndingSession {
+        std::unique_ptr<Writer> writer;
+        std::wstring reason, backends, observedEndAtUtc;
+        bool includeSecrets = false;
+    };
+    std::deque<EndingSession> ending;
+    SnapshotCapture source;
+    std::chrono::milliseconds finalBudget;
     std::unique_ptr<DiagnosticPipe> pipe;
     std::jthread snapshots;
 
-    Impl(const AppConfig& value, bool guest, bool preview, std::filesystem::path root)
-        : config(value), logRoot(std::move(root)), headless(guest), harness(preview) {
+    Impl(const AppConfig& value, bool guest, bool preview, std::filesystem::path root,
+        std::shared_ptr<SnapshotSource> snapshotSource, std::chrono::milliseconds budget)
+        : config(value), logRoot(std::move(root)), headless(guest), harness(preview),
+        source(snapshotSource ? std::move(snapshotSource) : std::make_shared<SnapshotSource>()),
+        finalBudget(std::clamp(budget, std::chrono::milliseconds(1), std::chrono::milliseconds(5000))) {
         try { directory = (logRoot.empty() ? Writer::DefaultRoot() : logRoot).wstring(); } catch (...) {}
         if (harness) return;
         if (headless) coverage = L"Passive guest capture; owner Companion is required for realtime and IPC feed capture.";
@@ -35,9 +49,9 @@ struct SessionLogger::Impl {
     }
     void Close(std::wstring_view reason) {
         if (writer) {
-            Write(L"session", Make({{L"event", Text(L"sessionEnded")}, {L"reason", Text(reason)}, {L"bytesWritten", Number(static_cast<double>(writer->BytesWritten()))}}));
-            error = writer->Error();
-            writer.reset();
+            periodicCancellation.request_stop();
+            ending.push_back({std::move(writer), std::wstring(reason), backendJson, UtcNow(), includeSecrets});
+            wake.notify_one();
         }
     }
     void Coverage(std::wstring text) {
@@ -72,34 +86,58 @@ struct SessionLogger::Impl {
     void SnapshotLoop(std::stop_token stop) {
         try {
             winrt::init_apartment(winrt::apartment_type::multi_threaded);
-            while (!stop.stop_requested()) {
+            for (;;) {
                 uint64_t capturedGeneration = 0;
+                EndingSession closing;
+                std::stop_source captureCancellation;
                 {
                     std::unique_lock lock(mutex);
-                    wake.wait_for(lock, stop, std::chrono::seconds(config.SessionLogging.SnapshotIntervalSeconds), [this] { return snapshotRequested; });
-                    snapshotRequested = false;
-                    if (stop.stop_requested()) break;
-                    if (!active || !writer) continue;
-                    capturedGeneration = generation;
+                    wake.wait_for(lock, stop, std::chrono::seconds(config.SessionLogging.SnapshotIntervalSeconds),
+                        [this] { return snapshotRequested || !ending.empty(); });
+                    if (!ending.empty()) { closing = std::move(ending.front()); ending.pop_front(); }
+                    else {
+                        snapshotRequested = false;
+                        if (stop.stop_requested()) break;
+                        if (!active || !writer) continue;
+                        capturedGeneration = generation;
+                        periodicCancellation = std::stop_source();
+                        captureCancellation = periodicCancellation;
+                    }
                 }
+                if (closing.writer) { Finalize(std::move(closing)); continue; }
                 try {
-                    auto snapshot = SnapshotSource().Capture(config.TargetUsername, config.IncludeDisconnectedSessions, stop);
+                    std::stop_callback cancelPeriodic(stop, [&] { captureCancellation.request_stop(); });
+                    const auto captured = source.Capture(config, captureCancellation.get_token());
                     std::lock_guard lock(mutex);
                     if (stopped || !active || capturedGeneration != generation) continue;
-                    if (!backendJson.empty()) snapshot.Insert(L"companionBackends", json::Parse(json::WideToUtf8(backendJson)));
-                    Write(L"diagnostics", Make({{L"event", Text(L"machineSnapshot")}, {L"snapshot", snapshot}}));
-                    auto games = Make({{L"event", Text(L"gameSnapshot")}});
-                    for (const auto name : {L"installedGames", L"runningGames", L"installedGameSources", L"inventoryLimitations", L"runningGameDetectionStatus", L"processCoverage", L"targetSessionIds"}) games.Insert(name, Get(snapshot, name));
-                    Write(L"games", games);
-                } catch (...) { std::lock_guard lock(mutex); Write(L"diagnostics", Make({{L"event", Text(L"snapshotFailed")}})); }
+                    if (captured.error.empty()) WriteSnapshot(*writer, captured.snapshot, includeSecrets, L"periodic", backendJson);
+                    else Write(L"diagnostics", Make({{L"event", Text(L"snapshotFailed")}, {L"error", Text(captured.error)}}));
+                } catch (...) {
+                    std::lock_guard lock(mutex);
+                    if (!stopped && active && capturedGeneration == generation) Write(L"diagnostics", Make({{L"event", Text(L"snapshotFailed")}}));
+                }
             }
             winrt::uninit_apartment();
         } catch (...) { std::lock_guard lock(mutex); error = L"Machine snapshot worker unavailable."; }
     }
+    void Finalize(EndingSession closing) {
+        const auto captured = CaptureFinal(source, config, finalBudget);
+        const bool policy = closing.includeSecrets;
+        if (!captured.error.empty()) closing.writer->Write(L"diagnostics", Make({{L"event", Text(L"snapshotFailed")},
+            {L"phase", Text(L"sessionEnd")}, {L"error", Text(captured.error)}}), policy);
+        WriteSnapshot(*closing.writer, captured.snapshot, policy, L"sessionEnd", closing.backends);
+        closing.writer->Write(L"session", Make({{L"event", Text(L"sessionEnded")}, {L"reason", Text(closing.reason)},
+            {L"observedEndAtUtc", Text(closing.observedEndAtUtc)},
+            {L"finalSnapshotStatus", Text(captured.error.empty() ? L"captured" : L"partial")},
+            {L"bytesWritten", Number(static_cast<double>(closing.writer->BytesWritten()))}}), policy);
+        std::lock_guard lock(mutex);
+        if (!closing.writer->Error().empty()) error = closing.writer->Error();
+    }
 };
 
-SessionLogger::SessionLogger(const AppConfig& config, bool headless, bool harness, std::filesystem::path logRoot)
-    : impl_(std::make_unique<Impl>(config, headless, harness, std::move(logRoot))) {}
+SessionLogger::SessionLogger(const AppConfig& config, bool headless, bool harness, std::filesystem::path logRoot,
+    std::shared_ptr<SnapshotSource> source, std::chrono::milliseconds finalSnapshotBudget)
+    : impl_(std::make_unique<Impl>(config, headless, harness, std::move(logRoot), std::move(source), finalSnapshotBudget)) {}
 SessionLogger::~SessionLogger() { Stop(); }
 void SessionLogger::UpdateSession(bool active, std::wstring_view reason, std::wstring_view identity) {
     std::lock_guard lock(impl_->mutex);

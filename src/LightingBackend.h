@@ -50,6 +50,7 @@ protected:
     virtual void ApplyTick(std::stop_token stop) = 0;
     /// Hand control back to the vendor software. May throw (logged).
     virtual void Release() = 0;
+    virtual std::wstring ReleasedStatus() const { return L"Ready"; }
     /// Called after a failed tick, before the retry delay.
     virtual void OnConnectionLost() {}
     virtual std::wstring UnavailableText(const std::exception&) const { return L"Unreachable — retrying"; }

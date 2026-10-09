@@ -28,8 +28,6 @@ void TrayApp::Impl::Shutdown() {
     if (signalThread.joinable() && signalThread.get_id() != std::this_thread::get_id())
         signalThread.join();
 
-    if (sessionLogger) sessionLogger->Stop();
-
     // Hand every lighting system back (bounded: each StopBlackout returns
     // within ~5 s and they run in parallel), then clear the presence.
     std::vector<ILightingBackend*> all;
@@ -47,6 +45,8 @@ void TrayApp::Impl::Shutdown() {
             LogInfo(L"discord clear failed");
         }
     }
+    PublishBackendStatus();
+    if (sessionLogger) sessionLogger->Stop();
     if (shim) {
         try {
             shim->Stop();

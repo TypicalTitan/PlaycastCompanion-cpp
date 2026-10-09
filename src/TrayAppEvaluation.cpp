@@ -32,7 +32,6 @@ void TrayApp::Impl::EvalLoop(std::stop_token stop) {
 /// Quiesce every worker that reads `cfg` by reference, hand the swap to the UI
 /// thread and wait for it. Returns false when shutdown interrupted the wait.
 bool TrayApp::Impl::ApplySettings(std::stop_token stop) {
-    if (sessionLogger) sessionLogger->Stop();
     std::vector<ILightingBackend*> all;
     all.reserve(lighting.size());
     for (const auto& backend : lighting)
@@ -47,6 +46,8 @@ bool TrayApp::Impl::ApplySettings(std::stop_token stop) {
             LogInfo(L"discord clear failed");
         }
     }
+    PublishBackendStatus();
+    if (sessionLogger) sessionLogger->Stop();
     if (channel) {
         try {
             channel->Stop();  // its listener thread reads TargetUsername/ShimPipeName
@@ -109,20 +110,13 @@ void TrayApp::Impl::Evaluate(const std::wstring& reason, std::stop_token stop) {
         const bool harness = g_harnessMode.load();
         const bool preview = previewArmed.load();
         const bool active = (sessions && sessions->IsTargetUserLoggedOn()) || (registry && registry->IsActive());
-        if (sessionLogger) {
-            using namespace sessionlog;
-            Array backends;
-            for (const auto& backend : lighting) backends.Append(Make({{L"name", Text(backend->DisplayName())},
-                {L"enabled", Boolean(backend->Enabled())}, {L"holding", Boolean(backend->IsHolding())}, {L"status", Text(backend->StatusText())}}));
-            sessionLogger->UpdateBackends(json::Utf8ToWide(json::Stringify(Make({{L"lighting", backends},
-                {L"discord", Text(discord ? discord->StatusText() : L"Unavailable in this Windows session")}}))));
-            sessionLogger->UpdateSession(active, reason, sessions ? sessions->TargetSessionIdentity() : L"registry-only");
-        }
         if (harness) {
             // --snapshot: only the state the UI renders, never the side effects.
         } else if (preview && !active) {
             // Mid-preview poll/session event with no real guest: leave the
             // preview's blackout and presence alone until "preview end".
+            PublishBackendStatus();
+            if (sessionLogger) sessionLogger->UpdateSession(false, reason, L"");
             return;
         } else if (active) {
             if (!guestActive.load())
@@ -153,6 +147,9 @@ void TrayApp::Impl::Evaluate(const std::wstring& reason, std::stop_token stop) {
             else
                 discord->Clear();
         }
+        PublishBackendStatus();
+        if (sessionLogger)
+            sessionLogger->UpdateSession(active, reason, sessions ? sessions->TargetSessionIdentity() : L"registry-only");
         guestActive.store(active);
         PostMessageW(Hwnd(), WM_PC_EVALUATED, active ? 1 : 0, 0);
     } catch (const std::exception& ex) {
@@ -162,6 +159,17 @@ void TrayApp::Impl::Evaluate(const std::wstring& reason, std::stop_token stop) {
     } catch (...) {
         LogInfo(L"evaluate failed: unknown error");
     }
+}
+
+void TrayApp::Impl::PublishBackendStatus() {
+    if (!sessionLogger) return;
+    using namespace sessionlog;
+    Array backends;
+    for (const auto& backend : lighting) backends.Append(Make({{L"name", Text(backend->DisplayName())},
+        {L"enabled", Boolean(backend->Enabled())}, {L"holding", Boolean(backend->IsHolding())},
+        {L"status", Text(backend->StatusText())}}));
+    sessionLogger->UpdateBackends(json::Utf8ToWide(json::Stringify(Make({{L"lighting", backends},
+        {L"discord", Text(discord ? discord->StatusText() : L"Unavailable in this Windows session")}}))));
 }
 
 void TrayApp::Impl::SignalLoop() {

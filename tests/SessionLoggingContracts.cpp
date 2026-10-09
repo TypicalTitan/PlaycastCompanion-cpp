@@ -7,12 +7,14 @@
 #include "SessionLoggingRedactor.h"
 #include "SessionLoggingVdf.h"
 #include "SessionLoggingWriter.h"
+#include "SessionLoggingLifecycleContracts.h"
 #include <fstream>
 #include <iostream>
 #include <set>
 
 using namespace pc;
 using namespace pc::sessionlog;
+int RunGuestInventoryContracts();
 namespace {
 void Require(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
 struct Fixture {
@@ -244,6 +246,8 @@ int wmain() {
             {"headless lifecycle", HeadlessLifecycleContract}}) {
             test(); ++count; std::cout << "PASS " << name << '\n';
         }
+        count += RunSessionLoggingLifecycleContracts();
+        count += RunGuestInventoryContracts();
         std::cout << count << " native logger contracts passed\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }

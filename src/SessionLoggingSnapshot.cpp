@@ -87,7 +87,7 @@ Object Disks() {
 }
 
 Object SnapshotSource::Capture(std::wstring_view target, bool includeDisconnected, std::stop_token stop) const {
-    const auto inventory = GameInventory().Capture(stop);
+    const auto inventory = GameInventory({}, {}, std::wstring(target)).Capture(stop);
     std::vector<DWORD> targetIds;
     const auto sessions = Sessions(target, includeDisconnected, targetIds);
     const auto processes = CaptureProcesses(targetIds, inventory, stop);

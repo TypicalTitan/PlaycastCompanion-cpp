@@ -106,7 +106,7 @@ void LightingBackendBase::StopBlackout() {
     } catch (...) {
         LogInfo(std::format(L"{}: release failed (unknown error)", DisplayName()));
     }
-    SetStatus(L"Ready");
+    SetStatus(ReleasedStatus());
 }
 
 bool LightingBackendBase::SleepFor(std::stop_token stop, std::chrono::milliseconds duration) {

@@ -10,6 +10,7 @@
 // winrt::init_apartment(multi_threaded) before any WinRT call.
 #include "Config.h"
 #include "LightingBackend.h"
+#include "WinRtOperationGate.h"
 
 namespace pc {
 class DynamicLightingController final : public LightingBackendBase {
@@ -35,6 +36,7 @@ private:  // module owner may extend
     mutable std::mutex statusMutex_;
     std::wstring holdingStatus_ = L"Holding blackout";
     std::wstring lastSummary_;
+    WinRtOperationGate operations_;
 
     void SetHoldingStatus(std::wstring status);
     /// Log "Dynamic Lighting: <summary>" once per change (dedupes repeats).
