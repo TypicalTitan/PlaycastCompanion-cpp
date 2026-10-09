@@ -24,6 +24,7 @@ struct Options {
     std::optional<std::wstring> lampsPath;
     bool snapshot = false;
     std::optional<std::wstring> snapshotDir;
+    std::optional<std::wstring> snapshotLog;
 };
 
 bool EqualsIgnoreCase(const wchar_t* a, const wchar_t* b) {
@@ -52,6 +53,8 @@ Options ParseArgs() {
             lampsIdx = i;
         else if (snapshotIdx < 0 && EqualsIgnoreCase(argv[i], L"--snapshot"))
             snapshotIdx = i;
+        else if (!options.snapshotLog && EqualsIgnoreCase(argv[i], L"--snapshot-log") && i + 1 < argc)
+            options.snapshotLog = argv[i + 1];
     }
     if (lampsIdx >= 0) {
         options.lamps = true;
@@ -217,6 +220,7 @@ int RunSnapshot(HINSTANCE instance, const Options& options) {
     if (HWND h = window.Handle(); h != nullptr)
         SetWindowPos(h, HWND_BOTTOM, -9000, -9000, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
     PumpMessages(500);
+    if (options.snapshotLog) window.ImportLogs({std::filesystem::path(*options.snapshotLog)});
     window.SaveSnapshots(dir);
     PumpMessages(100);
     return 0;  // TrayApp's destructor hides the tray icon and releases everything

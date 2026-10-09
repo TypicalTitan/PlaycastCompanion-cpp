@@ -22,11 +22,28 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      - name: Logger and analyzer contracts
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force installer/payload | Out-Null
+          Copy-Item build/PlaycastCompanion.exe, config.json installer/payload
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" installer/installer.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Upload exe
         uses: actions/upload-artifact@v4
         with:
           name: PlaycastCompanion-win-x64
           path: build/PlaycastCompanion.exe
 
-      # The NSIS setup is built locally (installer\build-setup.cmd); add
-      # `choco install nsis` + makensis here if you want CI to produce it too.
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlaycastCompanion-setup-win-x64
+          path: installer/PlaycastCompanionSetup-*.exe

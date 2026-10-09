@@ -47,6 +47,14 @@ struct RegistryWatchConfig {
     std::wstring ActiveValue;  // empty = any non-empty, non-"0" data counts
 };
 
+struct SessionLoggingConfig {
+    bool Enabled = true;
+    int SnapshotIntervalSeconds = 30;
+    int MaxFileBytes = 10 * 1024 * 1024;
+    int MaxSessionBytes = 100 * 1024 * 1024;
+    int RetentionDays = 14;
+};
+
 struct AppConfig {
     std::wstring TargetUsername = L"NonsoleMode";
     int TickSeconds = 5;
@@ -61,6 +69,7 @@ struct AppConfig {
     DynamicLightingConfig DynamicLighting;
     RegistryWatchConfig RegistryWatch;
     DiscordConfig Discord;
+    SessionLoggingConfig SessionLogging;
 
     /// <exe directory>\config.json
     static std::wstring ConfigPath();

@@ -34,7 +34,7 @@ set "MAKENSIS=makensis"
 if errorlevel 1 goto :fail
 
 echo.
-echo Done: installer\PlaycastCompanionSetup-3.1.0.exe
+echo Done: installer\PlaycastCompanionSetup-3.2.0.exe
 pause
 exit /b 0
 

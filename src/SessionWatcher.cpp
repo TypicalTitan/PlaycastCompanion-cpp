@@ -104,6 +104,23 @@ bool SessionWatcher::CurrentUserIs(std::wstring_view name) {
     return EqualsIgnoreCase(CurrentUserName(), name);
 }
 
+std::wstring SessionWatcher::TargetSessionIdentity() const {
+    PWTS_SESSION_INFOW sessions = nullptr;
+    DWORD count = 0;
+    if (!WTSEnumerateSessionsW(WTS_CURRENT_SERVER_HANDLE, 0, 1, &sessions, &count)) return L"WTS-unavailable";
+    WtsMemory memory;
+    memory.p = sessions;
+    std::vector<DWORD> ids;
+    for (DWORD index = 0; index < count; ++index) {
+        const auto user = GetSessionUser(sessions[index].SessionId);
+        if (user && CountsAsLoggedOn(sessions[index].State, includeDisconnected_) && EqualsIgnoreCase(*user, targetUser_)) ids.push_back(sessions[index].SessionId);
+    }
+    std::sort(ids.begin(), ids.end());
+    std::wstring identity = targetUser_;
+    for (const auto id : ids) identity += L":" + std::to_wstring(id);
+    return identity;
+}
+
 std::wstring SessionWatcher::CurrentUserName() {
     std::wstring buffer(UNLEN + 1, L'\0');
     DWORD size = static_cast<DWORD>(buffer.size());

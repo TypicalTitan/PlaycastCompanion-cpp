@@ -22,6 +22,7 @@ public:
     /// + WTSQuerySessionInformation(WTSUserName) finds the target account in an
     /// Active/Connected (or, if configured, Disconnected) session. Case-insensitive.
     bool IsTargetUserLoggedOn() const;
+    std::wstring TargetSessionIdentity() const;
 
     /// Forward from the window procedure. Returns true if the message was consumed.
     bool HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);

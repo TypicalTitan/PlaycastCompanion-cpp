@@ -22,7 +22,7 @@
 
 !define APP_NAME      "Playcast Companion"
 !define APP_ID        "PlaycastCompanion"
-!define APP_VERSION   "3.1.0"
+!define APP_VERSION   "3.2.0"
 !define APP_PUBLISHER "TypicalTitan"
 !define APP_EXE       "PlaycastCompanion.exe"
 !define OLD_ID        "ChromaBlackout"

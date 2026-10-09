@@ -58,6 +58,13 @@
   // the session (WTS username == NonsoleMode) signal alone is authoritative.
   // Default watches VirtualDisplayDeviceName under GuestMode — a REG_SZ Playcast
   // writes only while the guest virtual display is up.
+  "SessionLogging": {
+    "Enabled": true,
+    "SnapshotIntervalSeconds": 30,
+    "MaxFileBytes": 10485760,
+    "MaxSessionBytes": 104857600,
+    "RetentionDays": 14
+  },
   "RegistryWatch": {
     "Enabled": false,
     "Hive": "HKLM",

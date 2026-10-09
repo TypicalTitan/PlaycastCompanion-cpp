@@ -47,12 +47,17 @@ public:
     bool GuestActive() const;
     bool IsHeadless() const;
     HICON AppIcon() const;           // bright icon for window use (owned by TrayApp)
+    std::wstring SessionLogStatus() const;
+    std::wstring SessionLogDirectory() const;
+    bool SessionLogIncludeSecrets() const;
 
     // --- actions ---
     void RequestEvaluate(std::wstring reason);
     void TestGuestMode();            // 10 s preview of lights-off + presence, then re-evaluate
     void OpenSettings();
     void OpenLog();
+    void OpenSessionLogFolder();
+    void SetSessionLogIncludeSecrets(bool enabled);
     /// Write Config() to ConfigPath(); if access is denied (Program Files) write a
     /// temp file and elevate a `cmd /c copy` via ShellExecute "runas". Returns
     /// true on success; false (with a user-readable reason) on failure/cancel.
